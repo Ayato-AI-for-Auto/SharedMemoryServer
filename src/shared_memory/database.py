@@ -4,6 +4,7 @@ from .utils import get_db_path, log_error
 def get_connection():
     conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 def init_db():
@@ -21,6 +22,7 @@ def init_db():
             source TEXT,
             target TEXT,
             relation_type TEXT,
+            justification TEXT,
             PRIMARY KEY (source, target, relation_type),
             FOREIGN KEY (source) REFERENCES entities (name) ON DELETE CASCADE,
             FOREIGN KEY (target) REFERENCES entities (name) ON DELETE CASCADE

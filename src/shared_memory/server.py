@@ -105,8 +105,8 @@ async def save_memory(
                 for entity_name in existing_entities:
                     if entity_name.lower() in content.lower():
                         conn.execute(
-                            "INSERT OR REPLACE INTO relations (source, target, relation_type) VALUES (?, ?, ?)",
-                            (filename, entity_name, "mentions"),
+                            "INSERT OR REPLACE INTO relations (source, target, relation_type, justification) VALUES (?, ?, ?, ?)",
+                            (filename, entity_name, "mentions", f"Auto-detected in {filename}"),
                         )
 
                 # Semantic segment
@@ -175,12 +175,53 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
                 ).fetchall()
                 for row in e_rows:
                     update_access(row[0])
+                # 1-hop Graph Expansion
+                matched_names = [r[0] for r in e_rows]
+                if matched_names:
+                    # Find all relations connected to matched entities
+                    placeholders = ",".join(["?"] * len(matched_names))
+                    relations = cursor.execute(
+                        f"SELECT * FROM relations WHERE source IN ({placeholders}) OR target IN ({placeholders})",
+                        matched_names + matched_names
+                    ).fetchall()
+                    
+                    # Collect connected entities not already matched
+                    connected_names = set()
+                    for r in relations:
+                        if r[0] not in matched_names: connected_names.add(r[0])
+                        if r[1] not in matched_names: connected_names.add(r[1])
+                    
+                    if connected_names:
+                        c_placeholders = ",".join(["?"] * len(connected_names))
+                        c_entities = cursor.execute(
+                            f"SELECT * FROM entities WHERE name IN ({c_placeholders})",
+                            list(connected_names)
+                        ).fetchall()
+                        c_obs = cursor.execute(
+                            f"SELECT * FROM observations WHERE entity_name IN ({c_placeholders})",
+                            list(connected_names)
+                        ).fetchall()
+                        
+                        # Merge into response
+                        all_entities = e_rows + c_entities
+                        all_obs = o_matches + c_obs
+                    else:
+                        all_entities = e_rows
+                        all_obs = o_matches
+                else:
+                    all_entities = e_rows
+                    all_obs = o_matches
+                    relations = []
+
                 response["graph"] = {
                     "entities": [
-                        {"name": r[0], "type": r[1], "description": r[2]} for r in e_rows
+                        {"name": r[0], "type": r[1], "description": r[2]} for r in all_entities
+                    ],
+                    "relations": [
+                        {"source": r[0], "target": r[1], "type": r[2], "justification": r[3]} for r in relations
                     ],
                     "observations": [
-                        {"entity": o[1], "content": o[2], "at": o[3]} for o in o_matches
+                        {"entity": o[1], "content": o[2], "at": o[3]} for o in all_obs
                     ],
                 }
             else:
@@ -193,7 +234,7 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
                         for e in entities
                     ],
                     "relations": [
-                        {"source": r[0], "target": r[1], "type": r[2]}
+                        {"source": r[0], "target": r[1], "type": r[2], "justification": r[3]}
                         for r in relations
                     ],
                     "observations": [
