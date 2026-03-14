@@ -1,5 +1,27 @@
 import sqlite3
+import time
+import random
 from .utils import get_db_path, log_error
+
+def retry_on_db_lock(max_retries=5, initial_delay=0.1):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e).lower():
+                        retries += 1
+                        if retries == max_retries:
+                            raise
+                        delay = initial_delay * (2 ** (retries - 1)) + random.uniform(0, 0.1)
+                        time.sleep(delay)
+                    else:
+                        raise
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 def get_connection():
     conn = sqlite3.connect(get_db_path())
@@ -7,6 +29,7 @@ def get_connection():
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
+@retry_on_db_lock()
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -57,21 +80,25 @@ def init_db():
             content_id TEXT PRIMARY KEY,
             access_count INTEGER DEFAULT 0,
             last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,
-            importance_score REAL DEFAULT 1.0
+            importance_score REAL DEFAULT 1.0,
+            stability REAL DEFAULT 1.1,
+            FOREIGN KEY (content_id) REFERENCES entities (name) ON DELETE CASCADE
         )
     """)
     conn.commit()
     conn.close()
 
+@retry_on_db_lock()
 def update_access(content_id: str):
     conn = get_connection()
     try:
         conn.execute("""
-            INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score)
-            VALUES (?, 1, CURRENT_TIMESTAMP, 1.0)
+            INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score, stability)
+            VALUES (?, 1, CURRENT_TIMESTAMP, 1.0, 1.1)
             ON CONFLICT(content_id) DO UPDATE SET
                 access_count = access_count + 1,
-                last_accessed = CURRENT_TIMESTAMP
+                last_accessed = CURRENT_TIMESTAMP,
+                stability = stability * 1.1
         """, (content_id,))
         conn.commit()
     except Exception as e:

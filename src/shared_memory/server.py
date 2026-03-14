@@ -7,7 +7,7 @@ import math
 from typing import List, Optional, Dict, Any
 from fastmcp import FastMCP
 
-from .utils import log_error, get_bank_dir
+from .utils import log_error, get_bank_dir, mask_sensitive_data
 from .database import get_connection, init_db, update_access
 from .logic import cosine_similarity, batch_cosine_similarity, calculate_importance
 from .embeddings import get_gemini_client, compute_embedding, EMBEDDING_MODEL
@@ -58,9 +58,11 @@ async def save_memory(
     try:
         if entities:
             for e in entities:
+                name = mask_sensitive_data(e["name"])
+                desc = mask_sensitive_data(e.get("description", ""))
                 conn.execute(
                     "INSERT OR REPLACE INTO entities (name, entity_type, description) VALUES (?, ?, ?)",
-                    (e["name"], e["entity_type"], e.get("description", "")),
+                    (name, e["entity_type"], desc),
                 )
                 # Semantic segment
                 vector = await compute_embedding(
@@ -83,9 +85,10 @@ async def save_memory(
 
         if observations:
             for o in observations:
+                content = mask_sensitive_data(o["content"])
                 conn.execute(
                     "INSERT INTO observations (entity_name, content) VALUES (?, ?)",
-                    (o["entity_name"], o["content"]),
+                    (o["entity_name"], content),
                 )
             results.append(f"Saved {len(observations)} observations")
 
@@ -96,6 +99,8 @@ async def save_memory(
             for filename, content in bank_files.items() if bank_files else []:
                 if not filename.endswith(".md"):
                     filename += ".md"
+                
+                content = mask_sensitive_data(content)
                 conn.execute(
                     "INSERT OR REPLACE INTO bank_files (filename, content, last_synced) VALUES (?, ?, CURRENT_TIMESTAMP)",
                     (filename, content),
@@ -135,9 +140,12 @@ async def save_memory(
             if not filename.endswith(".md"):
                 filename += ".md"
             path = os.path.join(bank_dir, filename)
+            
+            # Masked content should be used for disk write as well
+            masked_content = mask_sensitive_data(content)
             try:
                 async with aiofiles.open(path, mode="w", encoding="utf-8") as f:
-                    await f.write(content)
+                    await f.write(masked_content)
                 file_count += 1
             except Exception as e:
                 log_error(f"Failed to write {filename} to disk", e)
@@ -303,20 +311,31 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
 
                     semantic_results = list(zip(cids, scores))
 
-                    # Get importance scores
+                    # Get importance scores and stability
                     metadata = cursor.execute(
-                        "SELECT content_id, access_count, last_accessed FROM knowledge_metadata"
+                        "SELECT content_id, access_count, last_accessed, stability FROM knowledge_metadata"
                     ).fetchall()
                     importance_map = {
-                        m[0]: calculate_importance(m[1], m[2]) for m in metadata
+                        m[0]: calculate_importance(m[1], m[2], m[3]) for m in metadata
                     }
 
-                    # Hybrid ranking: Similarity * Importance
+                    # Associative Priming: Boost neighbors of matched entities
+                    primed_ids = set()
+                    if "graph" in response and "relations" in response["graph"]:
+                        for rel in response["graph"]["relations"]:
+                            # If source or target is a strong semantic hit, prime the other
+                            primed_ids.add(rel["source"])
+                            primed_ids.add(rel["target"])
+
+                    # Hybrid ranking: Similarity * Importance (+ Priming Boost)
                     hybrid_results = []
                     for cid, score in semantic_results:
-                        imp_weight = importance_map.get(cid, 1.0)
-                        final_score = score * (0.8 + 0.2 * math.log1p(imp_weight))
-                        hybrid_results.append((cid, final_score, score, imp_weight))
+                        imp_weight = importance_map.get(cid, 1.1)
+                        # Priming boost: +20% importance if the item is related to a direct hit
+                        prime_boost = 1.2 if cid in primed_ids else 1.0
+                        
+                        final_score = score * (0.8 + 0.2 * math.log1p(imp_weight)) * prime_boost
+                        hybrid_results.append((cid, final_score, score, imp_weight, cid in primed_ids))
 
                     hybrid_results.sort(key=lambda x: x[1], reverse=True)
                     response["semantic_hits"] = [
@@ -325,6 +344,7 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
                             "score": round(float(r[1]), 4),
                             "base_similarity": round(float(r[2]), 4),
                             "importance": round(r[3], 2),
+                            "primed": r[4]
                         }
                         for r in hybrid_results[:5]
                         if r[2] > 0.3

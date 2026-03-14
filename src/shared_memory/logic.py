@@ -18,14 +18,14 @@ def batch_cosine_similarity(query_v, vectors_v):
     norms = np.linalg.norm(vectors_v, axis=1) * np.linalg.norm(query_v)
     return np.divide(dot_product, norms, out=np.zeros_like(dot_product), where=norms!=0)
 
-def calculate_importance(access_count, last_accessed_str):
+def calculate_importance(access_count: int, last_accessed_str: str, stability: float = 1.1) -> float:
     try:
         last_accessed = datetime.strptime(last_accessed_str, "%Y-%m-%d %H:%M:%S")
     except Exception:
         # Fallback to now if timestamp is corrupted or missing
         last_accessed = datetime.now()
     
-    # Decay Factor (lambda = 0.0001 per minute ~ roughly half in 5 days)
+    # Decay Factor mitigated by stability
     delta_minutes = (datetime.now() - last_accessed).total_seconds() / 60
-    decay = math.exp(-0.0001 * delta_minutes)
+    decay = math.exp(-0.0001 / stability * delta_minutes)
     return (access_count + 1) * decay
