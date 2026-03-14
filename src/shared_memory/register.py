@@ -124,7 +124,7 @@ def register_mcp(dry_run=False, isolate=False):
                 print(f"  [DRY RUN] Would update {name}")
                 
         except Exception as e:
-            print(f"  [ERROR] Failed to update {name}: {e}")
+            sys.stderr.write(f"  [ERROR] Failed to update {name}: {e}\n")
 
     print(f"\n--- System Prompt Integration (Dry Run: {dry_run}) ---")
     prompt_files = get_prompt_files()
@@ -152,7 +152,7 @@ def register_mcp(dry_run=False, isolate=False):
             else:
                 print(f"  [DRY RUN] Would update {p.name}")
         except Exception as e:
-            print(f"  [ERROR] Failed to update {p.name}: {e}")
+            sys.stderr.write(f"  [ERROR] Failed to update {p.name}: {e}\n")
 
 def main():
     parser = argparse.ArgumentParser(description="Register SharedMemoryServer as an MCP tool and update system prompts.")

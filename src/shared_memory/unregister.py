@@ -41,7 +41,9 @@ def unregister_mcp(dry_run=False, isolate=False):
                 if not dry_run:
                     with open(path, 'w', encoding='utf-8') as f: json.dump(config, f, indent=2)
                 print(f"  [SUCCESS] Removed {server_name} from {name}")
-        except Exception as e: print(f"  [ERROR] Failed {name}: {e}")
+        except Exception as e: 
+            import sys
+            sys.stderr.write(f"  [ERROR] Failed {name}: {e}\n")
 
     print(f"\n--- Prompt Instruction Cleanup ---")
     for p in get_prompt_files():
@@ -57,9 +59,10 @@ def unregister_mcp(dry_run=False, isolate=False):
                     if "# SHARED MEMORY SERVER INSTRUCTION" in line:
                         skipping = True
                         continue
-                    if skipping and line.strip() == "": # Stop skipping at next empty line or specific marker
-                        # For now, let's just use a simple marker-based removal or pattern
-                        pass
+                    if skipping and line.strip() == "":
+                        # Stop skipping at next empty line
+                        skipping = False
+                        continue
                     if not skipping:
                         new_lines.append(line)
                 
@@ -71,7 +74,9 @@ def unregister_mcp(dry_run=False, isolate=False):
                 if not dry_run:
                     p.write_text(new_content, encoding='utf-8')
                 print(f"  [SUCCESS] Cleaned {p.name}")
-        except Exception as e: print(f"  [ERROR] Failed {p.name}: {e}")
+        except Exception as e: 
+            import sys
+            sys.stderr.write(f"  [ERROR] Failed {p.name}: {e}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unregister SharedMemoryServer.")

@@ -111,7 +111,7 @@ async def compute_embedding(text: str):
         )
         return result.embeddings[0].values
     except Exception as e:
-        print(f"[EMBEDDING ERROR] {e}")
+        log_error("Embedding computation failed", e)
         return None
 
 def cosine_similarity(v1, v2):
@@ -135,7 +135,8 @@ def calculate_importance(access_count, last_accessed_str):
     import math
     try:
         last_accessed = datetime.strptime(last_accessed_str, "%Y-%m-%d %H:%M:%S")
-    except:
+    except Exception:
+        # Fallback to now if timestamp is corrupted or missing
         last_accessed = datetime.now()
     
     # Decay Factor (lambda = 0.0001 per minute ~ roughly half in 5 days)
@@ -246,6 +247,9 @@ async def save_memory(
             results.append(f"Mirrored {len(bank_files)} bank files and checked for implicit mentions")
 
         conn.commit()
+    except Exception as e:
+        log_error("Failed to save memory to database", e)
+        results.append(f"Error: DB save failed: {e}")
     finally:
         conn.close()
 
@@ -301,6 +305,9 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
                     "relations": [{"source": r[0], "target": r[1], "type": r[2]} for r in relations],
                     "observations": [{"entity": o[1], "content": o[2], "at": o[3]} for o in obs]
                 }
+        except Exception as e:
+            log_error("Failed to read knowledge graph", e)
+            response["graph_error"] = str(e)
         finally:
             conn.close()
 
@@ -334,6 +341,8 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
                 if filename not in found_files:
                     if not query or query.lower() in content.lower():
                         bank_data[f"{filename} [RECOVERED]"] = content
+        except Exception as e:
+            log_error("Failed to read bank/mirror from database", e)
         finally:
             conn.close()
         
@@ -371,6 +380,8 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
                         {"id": r[0], "score": round(float(r[1]), 4), "base_similarity": round(float(r[2]), 4), "importance": round(r[3], 2)} 
                         for r in hybrid_results[:5] if r[2] > 0.3
                     ]
+            except Exception as e:
+                log_error("Semantic search computation failed", e)
             finally:
                 conn.close()
 
@@ -386,6 +397,9 @@ def delete_memory(entities: List[str]):
             conn.execute("DELETE FROM entities WHERE name = ?", (name,))
         conn.commit()
         return f"Deleted {len(entities)} entities and all related observations/relations."
+    except Exception as e:
+        log_error(f"Failed to delete entities: {entities}", e)
+        return f"Error: Deletion failed: {e}"
     finally:
         conn.close()
 
@@ -408,6 +422,9 @@ async def repair_memory():
                 await f.write(content)
             count += 1
         results.append(f"Restored {count} files from DB to disk.")
+    except Exception as e:
+        log_error("Memory repair (DB to Disk) failed", e)
+        results.append(f"Error: Repair failed: {e}")
     finally:
         conn.close()
     return " | ".join(results)
@@ -439,6 +456,9 @@ async def archive_memory(threshold: float = 0.1):
             results.append("No items found below the importance threshold.")
         
         conn.commit()
+    except Exception as e:
+        log_error("Memory archival failed", e)
+        results.append(f"Error: Archival failed: {e}")
     finally:
         conn.close()
     return " | ".join(results)
@@ -480,6 +500,9 @@ async def get_memory_health():
         # BYOK Check
         health["semantic_search_active"] = get_gemini_client() is not None
         
+    except Exception as e:
+        log_error("Health diagnostics failed", e)
+        health["error"] = str(e)
     finally:
         conn.close()
     return health
