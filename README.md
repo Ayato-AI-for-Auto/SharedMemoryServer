@@ -70,8 +70,12 @@ Google AI Studio の `gemini-embedding-001` を統合しました。
 
 ### 6. Observability & Hardening (観測性と堅牢化)
 システムの内部状態を透明化し、デバッグを容易にします。
-- **Health Diagnostics**: `get_memory_health` ツールにより、知識の蓄積量、重要度の分布、セマンティック検索の稼働状態を診断できます。
+- **Health Diagnostics**: `get_memory_health` ツールにより、知識の蓄積量、重要度の偏差、忘却候補のカウント、埋め込みモデルの分布を詳細に診断できます。
 - **Improved Logging**: 全てのエラーが標準エラー出力（stderr）に集約され、サイレントな失敗を防止しました。
+
+### 7. Implicit Linking (自己組織化)
+- **Automatic Mention Detection**: 保存時に既存エンティティを自動検知し、ドキュメントと知識グラフを `mentions` 関係で自動的に紐付けます。
+- **Vectorized Similarity**: NumPyの行列演算を用いたバッチ処理により、大規模な知識ベースでも高速な検索性能を維持します。
 
 ## Environment Variables
 - `MEMORY_DB_PATH`: Path to the SQLite database.

@@ -116,7 +116,19 @@ async def compute_embedding(text: str):
 
 def cosine_similarity(v1, v2):
     if v1 is None or v2 is None: return 0
+    # Vectorized similarity for single pair
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+def batch_cosine_similarity(query_v, vectors_v):
+    """
+    Experimental vectorized similarity for a batch of vectors.
+    vectors_v should be a 2D numpy array.
+    """
+    if query_v is None or vectors_v.size == 0:
+        return np.array([])
+    dot_product = np.dot(vectors_v, query_v)
+    norms = np.linalg.norm(vectors_v, axis=1) * np.linalg.norm(query_v)
+    return np.divide(dot_product, norms, out=np.zeros_like(dot_product), where=norms!=0)
 
 def calculate_importance(access_count, last_accessed_str):
     from datetime import datetime
@@ -213,18 +225,25 @@ async def save_memory(
                 # Observations contribute to entity context but for now we embed per entity
             results.append(f"Saved {len(observations)} observations")
         
-        if bank_files:
+            # Implicit Mention Detection
+            existing_entities = [row[0] for row in conn.execute("SELECT name FROM entities").fetchall()]
             for filename, content in bank_files.items():
-                if not filename.endswith(".md"):
-                    filename += ".md"
+                if not filename.endswith(".md"): filename += ".md"
                 conn.execute("INSERT OR REPLACE INTO bank_files (filename, content, last_synced) VALUES (?, ?, CURRENT_TIMESTAMP)", 
                              (filename, content))
+                
+                # Scan for mentions
+                for entity_name in existing_entities:
+                    if entity_name.lower() in content.lower():
+                        conn.execute("INSERT OR REPLACE INTO relations (source, target, relation_type) VALUES (?, ?, ?)",
+                                     (filename, entity_name, "mentions"))
+
                 # Semantic segment
                 vector = await compute_embedding(f"File: {filename}\nContent:\n{content}")
                 if vector:
                     conn.execute("INSERT OR REPLACE INTO embeddings (content_id, vector, model_name) VALUES (?, ?, ?)",
                                  (filename, pickle.dumps(vector), EMBEDDING_MODEL))
-            results.append(f"Mirrored {len(bank_files)} bank files in DB (with embeddings)")
+            results.append(f"Mirrored {len(bank_files)} bank files and checked for implicit mentions")
 
         conn.commit()
     finally:
@@ -320,36 +339,38 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
         
         response["bank"] = bank_data
 
-    # 3. SEMANTIC SEARCH (Hybrid Reranking)
+    # 3. SEMANTIC SEARCH (Hybrid Reranking with Batching Optimization)
     if query and get_gemini_client():
         query_vector = await compute_embedding(query)
         if query_vector:
             conn = sqlite3.connect(get_db_path())
             try:
                 cursor = conn.cursor()
-                all_embeddings = cursor.execute("SELECT content_id, vector, model_name FROM embeddings").fetchall()
-                semantic_results = []
-                for cid, v_blob, model in all_embeddings:
-                    vector = pickle.loads(v_blob)
-                    score = cosine_similarity(query_vector, vector)
-                    semantic_results.append((cid, score, model))
-                
-                # Get importance scores
-                metadata = cursor.execute("SELECT content_id, access_count, last_accessed FROM knowledge_metadata").fetchall()
-                importance_map = {m[0]: calculate_importance(m[1], m[2]) for m in metadata}
+                rows = cursor.execute("SELECT content_id, vector, model_name FROM embeddings").fetchall()
+                if rows:
+                    cids = [r[0] for r in rows]
+                    vectors = np.array([pickle.loads(r[1]) for r in rows])
+                    scores = batch_cosine_similarity(query_vector, vectors)
+                    
+                    semantic_results = list(zip(cids, scores))
+                    
+                    # Get importance scores
+                    metadata = cursor.execute("SELECT content_id, access_count, last_accessed FROM knowledge_metadata").fetchall()
+                    importance_map = {m[0]: calculate_importance(m[1], m[2]) for m in metadata}
 
-                # Hybrid ranking: Similarity * Importance
-                hybrid_results = []
-                for cid, score, model in semantic_results:
-                    imp_weight = importance_map.get(cid, 1.0)
-                    final_score = score * (0.8 + 0.2 * math.log1p(imp_weight)) # Subtle boost
-                    hybrid_results.append((cid, final_score, score, imp_weight))
-                
-                hybrid_results.sort(key=lambda x: x[1], reverse=True)
-                response["semantic_hits"] = [
-                    {"id": r[0], "score": round(r[1], 4), "base_similarity": round(r[2], 4), "importance": round(r[3], 2)} 
-                    for r in hybrid_results[:5] if r[2] > 0.3
-                ]
+                    # Hybrid ranking: Similarity * Importance
+                    hybrid_results = []
+                    import math
+                    for cid, score in semantic_results:
+                        imp_weight = importance_map.get(cid, 1.0)
+                        final_score = score * (0.8 + 0.2 * math.log1p(imp_weight))
+                        hybrid_results.append((cid, final_score, score, imp_weight))
+                    
+                    hybrid_results.sort(key=lambda x: x[1], reverse=True)
+                    response["semantic_hits"] = [
+                        {"id": r[0], "score": round(float(r[1]), 4), "base_similarity": round(float(r[2]), 4), "importance": round(r[3], 2)} 
+                        for r in hybrid_results[:5] if r[2] > 0.3
+                    ]
             finally:
                 conn.close()
 
@@ -438,14 +459,20 @@ async def get_memory_health():
         health["embeddings_count"] = cursor.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
         
         # Importance distribution
-        metadata = cursor.execute("SELECT access_count, last_accessed FROM knowledge_metadata").fetchall()
+        metadata = cursor.execute("SELECT content_id, access_count, last_accessed FROM knowledge_metadata").fetchall()
         if metadata:
-            scores = [calculate_importance(m[0], m[1]) for m in metadata]
+            scores = [calculate_importance(m[1], m[2]) for m in metadata]
             health["importance_stats"] = {
                 "avg": round(sum(scores) / len(scores), 2),
+                "std_dev": round(float(np.std(scores)), 2),
                 "max": round(max(scores), 2),
                 "min": round(min(scores), 2)
             }
+            health["archive_candidates_count"] = sum(1 for s in scores if s < 0.1)
+        
+        # Model distribution
+        models = cursor.execute("SELECT model_name, COUNT(*) FROM embeddings GROUP BY model_name").fetchall()
+        health["model_distribution"] = {m[0]: m[1] for m in models}
         
         # Check for missing embeddings
         health["missing_embeddings"] = health["entities_count"] + health["bank_files_cached"] - health["embeddings_count"]
