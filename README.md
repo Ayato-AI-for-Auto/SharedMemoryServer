@@ -2,19 +2,20 @@
 
 This MCP server provides a unified memory layer for AI agents, combining structured knowledge and project-specific context.
 
-## Features
+## Unified Memory API (V2)
 
-### 1. Knowledge Graph Memory (SQLite)
-Maintains entities, relations, and observations in a persistent SQLite database.
-- `add_entity`: Define important concepts/tools.
-- `add_relation`: Map dependencies and connections.
-- `add_observation`: Record specific findings or state changes.
-- `query_graph`: Retrieve the complete context for a specific entity.
+The server now features a consolidated 3-tool API for maximum simplicity and efficiency:
 
-### 2. Memory Bank (Markdown)
-Manages project context using the "Memory Bank" pattern (popularized by Cline/Roo Code).
-- `read_context`: Retrieve project brief, active context, etc.
-- `save_context`: Persist updated context back to markdown files.
+### 1. `save_memory`
+**The Entrance for Writing**. Updates both Knowledge Graph (SQLite) and Memory Bank (Markdown) in one call.
+- Handles entities, relations, observations, and file updates simultaneously.
+
+### 2. `read_memory`
+**The Entrance for Reading**. Unified search and retrieval across both Graph and Bank.
+- Performs hybrid retrieval based on an optional keyword query and scope.
+
+### 3. `delete_memory`
+**The Entrance for Deletion**. Targeted removal of specific entities and their related context.
 
 ## Environment Variables
 - `MEMORY_DB_PATH`: Path to the SQLite database (default: `shared_memory.db`).

@@ -71,124 +71,122 @@ async def initialize_bank():
 
 # --- GRAPH TOOLS (Official MCP Logic) ---
 
+# --- UNIFIED TOOLS (V2 API) ---
+
 @mcp.tool()
-def create_entities(entities: List[Dict[str, str]]):
-    """Creates multiple entities in the knowledge graph. Each dict should have 'name', 'entity_type', 'description'."""
+async def save_memory(
+    entities: Optional[List[Dict[str, str]]] = None,
+    relations: Optional[List[Dict[str, str]]] = None,
+    observations: Optional[List[Dict[str, str]]] = None,
+    bank_files: Optional[Dict[str, str]] = None
+):
+    """
+    Unified write tool for both Knowledge Graph and Memory Bank.
+    - entities: List of {name, entity_type, description}
+    - relations: List of {source, target, relation_type}
+    - observations: List of {entity_name, content}
+    - bank_files: Dict of {filename: content}
+    """
+    results = []
     conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        for e in entities:
-            conn.execute("INSERT OR REPLACE INTO entities (name, entity_type, description) VALUES (?, ?, ?)", 
-                         (e['name'], e['entity_type'], e.get('description', '')))
-        conn.commit()
-        return f"Successfully created {len(entities)} entities."
-    finally:
-        conn.close()
-
-@mcp.tool()
-def create_relations(relations: List[Dict[str, str]]):
-    """Creates directed relations between entities. Each dict should have 'source', 'target', 'relation_type'."""
-    conn = sqlite3.connect(get_db_path())
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        for r in relations:
-            conn.execute("INSERT OR REPLACE INTO relations (source, target, relation_type) VALUES (?, ?, ?)", 
-                         (r['source'], r['target'], r['relation_type']))
-        conn.commit()
-        return f"Successfully created {len(relations)} relations."
-    finally:
-        conn.close()
-
-@mcp.tool()
-def add_observations(observations: List[Dict[str, str]]):
-    """Adds factual observations to entities. Each dict should have 'entity_name', 'content'."""
-    conn = sqlite3.connect(get_db_path())
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        for o in observations:
-            conn.execute("INSERT INTO observations (entity_name, content) VALUES (?, ?)", 
-                         (o['entity_name'], o['content']))
-        conn.commit()
-        return f"Successfully added {len(observations)} observations."
-    finally:
-        conn.close()
-
-@mcp.tool()
-def read_graph():
-    """Returns the entire knowledge graph (entities, relations, observations)."""
-    conn = sqlite3.connect(get_db_path())
-    try:
-        cursor = conn.cursor()
-        entities = cursor.execute("SELECT * FROM entities").fetchall()
-        relations = cursor.execute("SELECT * FROM relations").fetchall()
-        obs = cursor.execute("SELECT * FROM observations").fetchall()
+        if entities:
+            for e in entities:
+                conn.execute("INSERT OR REPLACE INTO entities (name, entity_type, description) VALUES (?, ?, ?)", 
+                             (e['name'], e['entity_type'], e.get('description', '')))
+            results.append(f"Saved {len(entities)} entities")
         
-        return {
-            "entities": [{"name": e[0], "type": e[1], "description": e[2]} for e in entities],
-            "relations": [{"source": r[0], "target": r[1], "type": r[2]} for r in relations],
-            "observations": [{"entity": o[1], "content": o[2], "at": o[3]} for o in obs]
-        }
+        if relations:
+            for r in relations:
+                conn.execute("INSERT OR REPLACE INTO relations (source, target, relation_type) VALUES (?, ?, ?)", 
+                             (r['source'], r['target'], r['relation_type']))
+            results.append(f"Saved {len(relations)} relations")
+            
+        if observations:
+            for o in observations:
+                conn.execute("INSERT INTO observations (entity_name, content) VALUES (?, ?)", 
+                             (o['entity_name'], o['content']))
+            results.append(f"Saved {len(observations)} observations")
+        
+        conn.commit()
     finally:
         conn.close()
 
+    if bank_files:
+        bank_dir = get_bank_dir()
+        for filename, content in bank_files.items():
+            if not filename.endswith(".md"):
+                filename += ".md"
+            path = os.path.join(bank_dir, filename)
+            async with aiofiles.open(path, mode='w', encoding='utf-8') as f:
+                await f.write(content)
+        results.append(f"Updated {len(bank_files)} bank files")
+
+    return " | ".join(results) if results else "No data provided."
+
 @mcp.tool()
-def delete_entities(entity_names: List[str]):
-    """Removes entities and their associated relations/observations."""
+async def read_memory(query: Optional[str] = None, scope: str = "all"):
+    """
+    Unified read tool for both Knowledge Graph and Memory Bank.
+    - query: Search term (optional)
+    - scope: "all", "graph", or "bank"
+    """
+    response = {}
+    
+    # 1. READ GRAPH
+    if scope in ["all", "graph"]:
+        conn = sqlite3.connect(get_db_path())
+        try:
+            cursor = conn.cursor()
+            if query:
+                q = f"%{query}%"
+                e_matches = cursor.execute("SELECT * FROM entities WHERE name LIKE ? OR description LIKE ?", (q, q)).fetchall()
+                o_matches = cursor.execute("SELECT * FROM observations WHERE content LIKE ?", (q,)).fetchall()
+                response["graph"] = {
+                    "entities": [{"name": e[0], "type": e[1], "description": e[2]} for e in e_matches],
+                    "observations": [{"entity": o[1], "content": o[2], "at": o[3]} for o in o_matches]
+                }
+            else:
+                entities = cursor.execute("SELECT * FROM entities").fetchall()
+                relations = cursor.execute("SELECT * FROM relations").fetchall()
+                obs = cursor.execute("SELECT * FROM observations").fetchall()
+                response["graph"] = {
+                    "entities": [{"name": e[0], "type": e[1], "description": e[2]} for e in entities],
+                    "relations": [{"source": r[0], "target": r[1], "type": r[2]} for r in relations],
+                    "observations": [{"entity": o[1], "content": o[2], "at": o[3]} for o in obs]
+                }
+        finally:
+            conn.close()
+
+    # 2. READ BANK
+    if scope in ["all", "bank"]:
+        bank_dir = get_bank_dir()
+        bank_data = {}
+        if os.path.exists(bank_dir):
+            for filename in os.listdir(bank_dir):
+                if filename.endswith(".md"):
+                    path = os.path.join(bank_dir, filename)
+                    async with aiofiles.open(path, mode='r', encoding='utf-8') as f:
+                        content = await f.read()
+                        if not query or query.lower() in content.lower():
+                            bank_data[filename] = content
+            response["bank"] = bank_data
+
+    return response
+
+@mcp.tool()
+def delete_memory(entities: List[str]):
+    """Removes specific entities and their associated data from the Knowledge Graph."""
     conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        for name in entity_names:
+        for name in entities:
             conn.execute("DELETE FROM entities WHERE name = ?", (name,))
         conn.commit()
-        return f"Deleted {len(entity_names)} entities."
+        return f"Deleted {len(entities)} entities and all related observations/relations."
     finally:
         conn.close()
-
-@mcp.tool()
-def search_nodes(query: str):
-    """Searches for entities or observations containing the query string."""
-    conn = sqlite3.connect(get_db_path())
-    try:
-        cursor = conn.cursor()
-        q = f"%{query}%"
-        e_matches = cursor.execute("SELECT * FROM entities WHERE name LIKE ? OR description LIKE ?", (q, q)).fetchall()
-        o_matches = cursor.execute("SELECT * FROM observations WHERE content LIKE ?", (q,)).fetchall()
-        
-        return {
-            "query": query,
-            "entity_matches": [{"name": e[0], "type": e[1], "description": e[2]} for e in e_matches],
-            "observation_matches": [{"entity": o[1], "content": o[2], "at": o[3]} for o in o_matches]
-        }
-    finally:
-        conn.close()
-
-# --- MEMORY BANK TOOLS (Cline/Roo Logic) ---
-
-@mcp.tool()
-async def read_memory_bank():
-    """Reads all active files in the memory-bank directory for full context."""
-    bank_dir = get_bank_dir()
-    bank_data = {}
-    if not os.path.exists(bank_dir):
-        return "ERROR: Memory bank not initialized."
-    
-    for filename in os.listdir(bank_dir):
-        if filename.endswith(".md"):
-            path = os.path.join(bank_dir, filename)
-            async with aiofiles.open(path, mode='r', encoding='utf-8') as f:
-                bank_data[filename] = await f.read()
-    return bank_data
-
-@mcp.tool()
-async def update_bank_file(filename: str, content: str):
-    """Updates or creates a specific markdown file in the memory bank."""
-    bank_dir = get_bank_dir()
-    if not filename.endswith(".md"):
-        filename += ".md"
-    path = os.path.join(bank_dir, filename)
-    async with aiofiles.open(path, mode='w', encoding='utf-8') as f:
-        await f.write(content)
-    return f"Updated {filename}."
 
 # --- INITIALIZATION ---
 def main():

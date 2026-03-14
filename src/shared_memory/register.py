@@ -13,6 +13,8 @@ def get_config_paths():
     return {
         "Claude Desktop": Path(appdata) / "Claude" / "claude_desktop_config.json",
         "Cursor (Roo Code/Cline)": Path(appdata) / "Cursor" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings" / "cline_mcp_settings.json",
+        "Antigravity (Roo Code/Cline)": Path(appdata) / "antigravity" / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings" / "cline_mcp_settings.json",
+        "Antigravity (Central)": Path("C:/Users/saiha/.gemini/antigravity/mcp_config.json"),
         "Cursor (Global)": Path(appdata) / "Cursor" / "User" / "settings.json"
     }
 
@@ -62,7 +64,7 @@ def register_mcp(dry_run=False):
                 continue
 
         # Determine where to put the MCP config based on file type
-        if "cline_mcp_settings.json" in str(path) or "claude_desktop_config.json" in str(path):
+        if any(x in str(path) for x in ["mcp_config.json", "cline_mcp_settings.json", "claude_desktop_config.json"]):
             if "mcpServers" not in config:
                 config["mcpServers"] = {}
             config["mcpServers"]["SharedMemoryServer"] = mcp_config
