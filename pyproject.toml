@@ -9,6 +9,7 @@ dependencies = [
     "aiofiles",
     "google-genai",
     "numpy",
+    "ruff",
 ]
 
 [project.scripts]
