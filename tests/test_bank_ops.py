@@ -1,7 +1,6 @@
 import unittest
 import os
 import shutil
-import asyncio
 import sys
 
 # Add src to path
