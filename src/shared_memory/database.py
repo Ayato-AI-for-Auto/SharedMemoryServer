@@ -3,6 +3,7 @@ import time
 import random
 from .utils import get_db_path, log_error
 
+
 def retry_on_db_lock(max_retries=5, initial_delay=0.1):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -15,19 +16,25 @@ def retry_on_db_lock(max_retries=5, initial_delay=0.1):
                         retries += 1
                         if retries == max_retries:
                             raise
-                        delay = initial_delay * (2 ** (retries - 1)) + random.uniform(0, 0.1)
+                        delay = initial_delay * (2 ** (retries - 1)) + random.uniform(
+                            0, 0.1
+                        )
                         time.sleep(delay)
                     else:
                         raise
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
+
 
 def get_connection():
     conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
+
 
 @retry_on_db_lock()
 def init_db():
@@ -37,7 +44,11 @@ def init_db():
         CREATE TABLE IF NOT EXISTS entities (
             name TEXT PRIMARY KEY,
             entity_type TEXT,
-            description TEXT
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
+            updated_by TEXT
         )
     """)
     cursor.execute("""
@@ -46,6 +57,8 @@ def init_db():
             target TEXT,
             relation_type TEXT,
             justification TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
             PRIMARY KEY (source, target, relation_type),
             FOREIGN KEY (source) REFERENCES entities (name) ON DELETE CASCADE,
             FOREIGN KEY (target) REFERENCES entities (name) ON DELETE CASCADE
@@ -57,6 +70,7 @@ def init_db():
             entity_name TEXT,
             content TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT,
             FOREIGN KEY (entity_name) REFERENCES entities (name) ON DELETE CASCADE
         )
     """)
@@ -64,7 +78,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS bank_files (
             filename TEXT PRIMARY KEY,
             content TEXT,
-            last_synced DATETIME DEFAULT CURRENT_TIMESTAMP
+            last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_by TEXT
         )
     """)
     cursor.execute("""
@@ -85,21 +100,77 @@ def init_db():
             FOREIGN KEY (content_id) REFERENCES entities (name) ON DELETE CASCADE
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_name TEXT,
+            content_id TEXT,
+            action TEXT,
+            old_data TEXT,
+            new_data TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            agent_id TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            description TEXT,
+            file_path TEXT
+        )
+    """)
+    # Migrations for Phase 11
+    try:
+        cursor.execute(
+            "ALTER TABLE entities ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        )
+        cursor.execute(
+            "ALTER TABLE entities ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        )
+        cursor.execute("ALTER TABLE entities ADD COLUMN created_by TEXT")
+        cursor.execute("ALTER TABLE entities ADD COLUMN updated_by TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute(
+            "ALTER TABLE relations ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        )
+        cursor.execute("ALTER TABLE relations ADD COLUMN created_by TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE observations ADD COLUMN created_by TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE bank_files ADD COLUMN updated_by TEXT")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
+
 
 @retry_on_db_lock()
 def update_access(content_id: str):
     conn = get_connection()
     try:
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score, stability)
             VALUES (?, 1, CURRENT_TIMESTAMP, 1.0, 1.1)
             ON CONFLICT(content_id) DO UPDATE SET
                 access_count = access_count + 1,
                 last_accessed = CURRENT_TIMESTAMP,
                 stability = stability * 1.1
-        """, (content_id,))
+        """,
+            (content_id,),
+        )
         conn.commit()
     except Exception as e:
         log_error(f"Failed to update access for {content_id}", e)

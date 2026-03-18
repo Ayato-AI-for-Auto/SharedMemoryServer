@@ -2,10 +2,13 @@ import numpy as np
 import math
 from datetime import datetime
 
+
 def cosine_similarity(v1, v2):
-    if v1 is None or v2 is None: return 0
+    if v1 is None or v2 is None:
+        return 0
     # Vectorized similarity for single pair
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
 
 def batch_cosine_similarity(query_v, vectors_v):
     """
@@ -16,15 +19,20 @@ def batch_cosine_similarity(query_v, vectors_v):
         return np.array([])
     dot_product = np.dot(vectors_v, query_v)
     norms = np.linalg.norm(vectors_v, axis=1) * np.linalg.norm(query_v)
-    return np.divide(dot_product, norms, out=np.zeros_like(dot_product), where=norms!=0)
+    return np.divide(
+        dot_product, norms, out=np.zeros_like(dot_product), where=norms != 0
+    )
 
-def calculate_importance(access_count: int, last_accessed_str: str, stability: float = 1.1) -> float:
+
+def calculate_importance(
+    access_count: int, last_accessed_str: str, stability: float = 1.1
+) -> float:
     try:
         last_accessed = datetime.strptime(last_accessed_str, "%Y-%m-%d %H:%M:%S")
     except Exception:
         # Fallback to now if timestamp is corrupted or missing
         last_accessed = datetime.now()
-    
+
     # Decay Factor mitigated by stability
     delta_minutes = (datetime.now() - last_accessed).total_seconds() / 60
     decay = math.exp(-0.0001 / stability * delta_minutes)
