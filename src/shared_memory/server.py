@@ -7,10 +7,22 @@ from typing import List, Optional, Dict
 from fastmcp import FastMCP
 
 import json
-from .utils import log_error, get_bank_dir, mask_sensitive_data
-from .database import get_connection, init_db, update_access
-from .logic import batch_cosine_similarity, calculate_importance
-from .embeddings import get_gemini_client, compute_embedding, EMBEDDING_MODEL
+try:
+    from .utils import log_error, get_bank_dir, mask_sensitive_data
+    from .database import get_connection, init_db, update_access
+    from .logic import batch_cosine_similarity, calculate_importance
+    from .embeddings import get_gemini_client, compute_embedding, EMBEDDING_MODEL
+except (ImportError, ValueError):
+    import sys
+    import os
+    # Ensure package directory is in sys.path for direct execution
+    _current_dir = os.path.dirname(os.path.abspath(__file__))
+    if _current_dir not in sys.path:
+        sys.path.insert(0, _current_dir)
+    from utils import log_error, get_bank_dir, mask_sensitive_data
+    from database import get_connection, init_db, update_access
+    from logic import batch_cosine_similarity, calculate_importance
+    from embeddings import get_gemini_client, compute_embedding, EMBEDDING_MODEL
 
 mcp = FastMCP("SharedMemoryServer")
 

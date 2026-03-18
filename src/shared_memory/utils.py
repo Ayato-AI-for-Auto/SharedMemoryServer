@@ -23,11 +23,11 @@ def mask_sensitive_data(text: str) -> str:
         return text
 
     patterns = [
-        (r"(AIza[0-9A-Za-z-_]{35})", "[GOOGLE_API_KEY_MASKED]"),
-        (r"(sk-[a-zA-Z0-9]{20,})", "[API_KEY_MASKED]"),
+        (r"AIza[0-9A-Za-z-_]{35}", "[GOOGLE_API_KEY_MASKED]"),
+        (r"sk-[a-zA-Z0-9]{20,}", "[API_KEY_MASKED]"),
         (r"(password\s*[:=]\s*)([^\s]+)", r"\1[PASSWORD_MASKED]"),
         (
-            r"(-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----)",
+            r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----",
             "[PRIVATE_KEY_MASKED]",
         ),
     ]

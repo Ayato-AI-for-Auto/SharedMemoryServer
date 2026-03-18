@@ -1,7 +1,10 @@
 import sqlite3
 import time
 import random
-from .utils import get_db_path, log_error
+try:
+    from .utils import get_db_path, log_error
+except (ImportError, ValueError):
+    from utils import get_db_path, log_error
 
 
 def retry_on_db_lock(max_retries=5, initial_delay=0.1):

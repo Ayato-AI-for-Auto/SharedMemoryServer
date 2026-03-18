@@ -1,6 +1,9 @@
 import os
 from google import genai
-from .utils import log_error
+try:
+    from .utils import log_error
+except (ImportError, ValueError):
+    from utils import log_error
 
 EMBEDDING_MODEL = "gemini-embedding-001"
 DIMENSIONALITY = 768
