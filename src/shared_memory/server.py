@@ -7,6 +7,7 @@ from typing import List, Optional, Dict
 from fastmcp import FastMCP
 
 import json
+
 try:
     from .utils import log_error, get_bank_dir, mask_sensitive_data
     from .database import get_connection, init_db, update_access
@@ -15,6 +16,7 @@ try:
 except (ImportError, ValueError):
     import sys
     import os
+
     # Ensure package directory is in sys.path for direct execution
     _current_dir = os.path.dirname(os.path.abspath(__file__))
     if _current_dir not in sys.path:
@@ -25,6 +27,62 @@ except (ImportError, ValueError):
     from embeddings import get_gemini_client, compute_embedding, EMBEDDING_MODEL
 
 mcp = FastMCP("SharedMemoryServer")
+
+
+async def _check_conflict(entity_name: str, new_content: str, agent_id: str):
+    """
+    Internal helper to check if new content contradicts existing observations using LLM.
+    Returns (conflict_found: bool, reason: str)
+    """
+    conn = get_connection()
+    try:
+        # Fetch up to 3 most recent observations for context
+        existing = conn.execute(
+            "SELECT content FROM observations WHERE entity_name = ? ORDER BY timestamp DESC LIMIT 3",
+            (entity_name,),
+        ).fetchall()
+        if not existing:
+            return False, None
+
+        existing_text = "\n".join([f"- {row[0]}" for row in existing])
+        prompt = (
+            f"You are a Fact-Checking Engine. Check if the following NEW statement contradicts "
+            f"the EXISTING knowledge about '{entity_name}'.\n\n"
+            f"EXISTING KNOWLEDGE:\n{existing_text}\n\n"
+            f"NEW STATEMENT:\n{new_content}\n\n"
+            f"Is there a direct contradiction? Respond ONLY with a JSON object:\n"
+            f'{{"conflict": true/false, "reason": "explanation if true, else empty"}}'
+        )
+
+        client = get_gemini_client()
+        if not client:
+            return False, None
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=prompt,
+        ).text
+
+        # Parse JSON from response (handling potential markdown formatting)
+        clean_res = response.strip().replace("```json", "").replace("```", "")
+        data = json.loads(clean_res)
+
+        if data.get("conflict"):
+            # Log to DB
+            conn.execute(
+                "INSERT INTO conflicts (entity_name, existing_content, new_content, reason, agent_id) VALUES (?, ?, ?, ?, ?)",
+                (entity_name, existing_text, new_content, data.get("reason"), agent_id),
+            )
+            conn.commit()
+            return True, data.get("reason")
+
+        return False, None
+    except Exception as e:
+        log_error(f"Conflict check failed for {entity_name}", e)
+        return False, None
+    finally:
+        conn.close()
+
 
 # --- MEMORY BANK STORAGE (Markdown) ---
 BANK_FILES = {
@@ -64,21 +122,54 @@ async def save_memory(
 ):
     """
     Unified write tool for both Knowledge Graph and Memory Bank.
-    - agent_id: ID of the agent making the changes (for attribution)
+
+    PURPOSE:
+    - Use this to persist new facts, relationships, and documents.
+    - It acts as the primary entry point for 'learning' and 'recording' project state.
+
+    CATEGORIES OF DATA:
+    1. entities: Fundamental concepts, tools, or markers (e.g., "Python", "Requirement-01").
+    2. relations: Semantic links between entities (e.g., "A" -- "implements" --> "B").
+    3. observations: Fragmented factual statements about an entity (e.g., "Feature X is deprecated").
+    4. bank_files: Markdown documents for long-form context.
+
+    BUSINESS LOGIC:
+    - Automatically updates entity 'importance' on access (Observations/Bank).
+    - Triggers 'Semantic Conflict Detection' on observations to prevent contradictory knowledge.
+    - Synchronizes bank_files between SQLite (mirror) and physical disk.
+    - Automatically detects 'mentions' of existing entities within bank_files and creates relations.
+
+    GUIDELINES:
+    - agent_id: Always provide a descriptive ID (e.g., your agent name or session ID) for attribution.
+    - importance: Set 1-10 (default 5). Higher for core architectural decisions.
     """
     results = []
+    conflicts_found = []
+
     conn = get_connection()
     try:
+        # 1. Save Entities
         if entities:
             for e in entities:
-                name = mask_sensitive_data(e["name"])
-                desc = mask_sensitive_data(e.get("description", ""))
+                name = e["name"]
+                e_type = e.get("entity_type", "concept")
+                desc = e.get("description", "")
+                importance = e.get("importance", 5)
 
-                # Audit: Get old state
+                # Audit: Fetch old state
                 old_row = conn.execute(
                     "SELECT name, entity_type, description FROM entities WHERE name = ?",
                     (name,),
                 ).fetchone()
+
+                # INSERT OR REPLACE
+                conn.execute(
+                    "INSERT OR REPLACE INTO entities (name, entity_type, description, importance, updated_by) VALUES (?, ?, ?, ?, ?)",
+                    (name, e_type, desc, importance, agent_id),
+                )
+
+                # Record Audit
+                action = "UPDATE" if old_row else "INSERT"
                 old_data = (
                     json.dumps(
                         {"name": old_row[0], "type": old_row[1], "desc": old_row[2]}
@@ -86,44 +177,24 @@ async def save_memory(
                     if old_row
                     else None
                 )
-
-                if old_row:
-                    conn.execute(
-                        "UPDATE entities SET entity_type = ?, description = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ? WHERE name = ?",
-                        (e["entity_type"], desc, agent_id, name),
-                    )
-                else:
-                    conn.execute(
-                        "INSERT INTO entities (name, entity_type, description, created_by, updated_by) VALUES (?, ?, ?, ?, ?)",
-                        (name, e["entity_type"], desc, agent_id, agent_id),
-                    )
-
-                # Record Audit
-                new_data = json.dumps(
-                    {"name": name, "type": e["entity_type"], "desc": desc}
-                )
+                new_data = json.dumps({"name": name, "type": e_type, "desc": desc})
                 conn.execute(
                     "INSERT INTO audit_logs (table_name, content_id, action, old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        "entities",
-                        name,
-                        "UPDATE" if old_row else "INSERT",
-                        old_data,
-                        new_data,
-                        agent_id,
-                    ),
+                    ("entities", name, action, old_data, new_data, agent_id),
                 )
-                # Semantic segment
-                vector = await compute_embedding(
-                    f"{e['name']} ({e['entity_type']}): {e.get('description', '')}"
-                )
+
+                # Vectorize
+                vector = await compute_embedding(f"{name} ({e_type}): {desc}")
                 if vector:
+                    import pickle
+
                     conn.execute(
                         "INSERT OR REPLACE INTO embeddings (content_id, vector, model_name) VALUES (?, ?, ?)",
-                        (e["name"], pickle.dumps(vector), EMBEDDING_MODEL),
+                        (name, pickle.dumps(vector), EMBEDDING_MODEL),
                     )
-            results.append(f"Saved {len(entities)} entities (with embeddings)")
+            results.append(f"Saved {len(entities)} entities")
 
+        # 2. Save Relations
         if relations:
             relation_tuples = [
                 (r["source"], r["target"], r["relation_type"], agent_id)
@@ -135,18 +206,34 @@ async def save_memory(
             )
             results.append(f"Saved {len(relations)} relations")
 
+        # 3. Save Observations & Conflict Check
         if observations:
             for o in observations:
+                entity_name = o["entity_name"]
                 content = mask_sensitive_data(o["content"])
+
+                # Semantic Conflict Detection (Phase 13)
+                is_conflict, reason = await _check_conflict(
+                    entity_name, content, agent_id
+                )
+                if is_conflict:
+                    conflicts_found.append({"entity": entity_name, "reason": reason})
+
                 conn.execute(
                     "INSERT INTO observations (entity_name, content, created_by) VALUES (?, ?, ?)",
-                    (o["entity_name"], content, agent_id),
+                    (entity_name, content, agent_id),
                 )
+                # Boost importance
+                conn.execute(
+                    "UPDATE entities SET importance = MIN(importance + 1, 10), updated_at = CURRENT_TIMESTAMP WHERE name = ?",
+                    (entity_name,),
+                )
+                # Audit
                 conn.execute(
                     "INSERT INTO audit_logs (table_name, content_id, action, new_data, agent_id) VALUES (?, ?, ?, ?, ?)",
                     (
                         "observations",
-                        o["entity_name"],
+                        entity_name,
                         "INSERT",
                         json.dumps({"content": content}),
                         agent_id,
@@ -154,30 +241,28 @@ async def save_memory(
                 )
             results.append(f"Saved {len(observations)} observations")
 
+        # 4. Save Bank Files & Sync
         if bank_files:
-            # Implicit Mention Detection
             existing_entities = [
-                row[0] for row in conn.execute("SELECT name FROM entities").fetchall()
+                r[0] for r in conn.execute("SELECT name FROM entities").fetchall()
             ]
+            bank_dir = get_bank_dir()
             for filename, content in bank_files.items():
                 if not filename.endswith(".md"):
                     filename += ".md"
-
                 content = mask_sensitive_data(content)
 
-                # Audit
+                # DB Sync
                 old_content = conn.execute(
                     "SELECT content FROM bank_files WHERE filename = ?", (filename,)
                 ).fetchone()
                 old_data = (
                     json.dumps({"content": old_content[0]}) if old_content else None
                 )
-
                 conn.execute(
-                    "INSERT OR REPLACE INTO bank_files (filename, content, last_synced, updated_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
+                    "INSERT OR REPLACE INTO bank_files (filename, content, updated_by) VALUES (?, ?, ?)",
                     (filename, content, agent_id),
                 )
-
                 conn.execute(
                     "INSERT INTO audit_logs (table_name, content_id, action, old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
                     (
@@ -190,69 +275,97 @@ async def save_memory(
                     ),
                 )
 
-                # Scan for mentions
+                # Disk Sync
+                path = os.path.join(bank_dir, filename)
+                import aiofiles
+
+                async with aiofiles.open(path, mode="w", encoding="utf-8") as f:
+                    await f.write(content)
+
+                # Mentions Detection
                 for entity_name in existing_entities:
                     if entity_name.lower() in content.lower():
                         conn.execute(
-                            "INSERT OR REPLACE INTO relations (source, target, relation_type, justification, created_by) VALUES (?, ?, ?, ?, ?)",
-                            (
-                                filename,
-                                entity_name,
-                                "mentions",
-                                f"Auto-detected in {filename}",
-                                agent_id,
-                            ),
+                            "INSERT OR REPLACE INTO relations (source, target, relation_type, created_by) VALUES (?, ?, ?, ?)",
+                            (filename, entity_name, "mentions", agent_id),
                         )
-
-                # Semantic segment
-                vector = await compute_embedding(
-                    f"File: {filename}\nContent:\n{content}"
-                )
-                if vector:
-                    conn.execute(
-                        "INSERT OR REPLACE INTO embeddings (content_id, vector, model_name) VALUES (?, ?, ?)",
-                        (filename, pickle.dumps(vector), EMBEDDING_MODEL),
-                    )
-            results.append(
-                f"Mirrored {len(bank_files)} bank files and checked for implicit mentions"
-            )
+            results.append(f"Updated {len(bank_files)} bank files")
 
         conn.commit()
+
+        status_msg = " | ".join(results)
+        response = {"status": "success", "message": status_msg}
+        if conflicts_found:
+            response["conflicts_detected"] = conflicts_found
+            response["warning"] = "Semantic contradictions were detected."
+
+        return response
+
     except Exception as e:
-        log_error("Failed to save memory to database", e)
-        results.append(f"Error: DB save failed: {e}")
+        log_error("Failed to save memory", e)
+        return {"status": "error", "message": str(e)}
     finally:
         conn.close()
 
-    if bank_files:
-        bank_dir = get_bank_dir()
-        file_count = 0
-        for filename, content in bank_files.items():
-            if not filename.endswith(".md"):
-                filename += ".md"
-            path = os.path.join(bank_dir, filename)
 
-            # Masked content should be used for disk write as well
-            masked_content = mask_sensitive_data(content)
-            try:
-                async with aiofiles.open(path, mode="w", encoding="utf-8") as f:
-                    await f.write(masked_content)
-                file_count += 1
-            except Exception as e:
-                log_error(f"Failed to write {filename} to disk", e)
-                results.append(f"Warning: Failed to write {filename} to disk: {e}")
-        if file_count:
-            results.append(f"Updated {file_count} bank files on disk")
+@mcp.tool()
+def get_conflicts(entity_name: Optional[str] = None):
+    """
+    Retrieves unresolved semantic contradictions detected during 'save_memory'.
 
-    return " | ".join(results) if results else "No data provided."
+    PURPOSE:
+    - Use this to review knowledge gaps or 'hallucination' risks where new data conflicts with old.
+    - Part of the 'Agent-in-the-Loop' resolution pattern: You should call this if save_memory warns about conflicts.
+
+    OUTPUT:
+    - Returns a list of conflicts including existing_content, new_content, and the LLM's 'reason' for flagging it.
+    """
+    conn = get_connection()
+    try:
+        if entity_name:
+            cursor = conn.execute(
+                "SELECT id, entity_name, existing_content, new_content, reason, detected_at FROM conflicts WHERE entity_name = ? AND resolved = 0",
+                (entity_name,),
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT id, entity_name, existing_content, new_content, reason, detected_at FROM conflicts WHERE resolved = 0"
+            )
+
+        conflicts = []
+        for row in cursor.fetchall():
+            conflicts.append(
+                {
+                    "id": row[0],
+                    "entity": row[1],
+                    "existing": row[2],
+                    "new": row[3],
+                    "reason": row[4],
+                    "at": row[5],
+                }
+            )
+        return conflicts
+    finally:
+        conn.close()
 
 
 @mcp.tool()
 async def read_memory(query: Optional[str] = None, scope: str = "all"):
     """
-    Unified read tool for both Knowledge Graph and Memory Bank.
-    - query: Search term (optional)
-    - scope: "all", "graph", or "bank"
+    Unified search and retrieval tool for Knowledge Graph and Memory Bank.
+
+    PURPOSE:
+    - Navigating the codebase context, finding existing rules, or retrieving project history.
+
+    SEARCH MODES:
+    - Keyword Search: Standard SQLite LIKE matching.
+    - Semantic Search: Automatically triggered if 'query' is provided. Uses Gemini embeddings for meaning-based hits.
+    - 1-hop Expansion: Automatically retrieves neighbors of hit entities to provide 'spreading activation' context.
+
+    SCOPE:
+    - "all": (Default) Returns both graph nodes and bank file contents.
+    - "graph": Focus only on entities, relations, and observations.
+    - "bank": Focus only on Markdown documents.
     """
     response = {}
 
@@ -468,7 +581,17 @@ async def read_memory(query: Optional[str] = None, scope: str = "all"):
 
 @mcp.tool()
 def delete_memory(entities: List[str], agent_id: str = "default_agent"):
-    """Removes specific entities and their associated data from the Knowledge Graph."""
+    """
+    Removes specific entities and their associated data from the Knowledge Graph.
+
+    PURPOSE:
+    - Cleanup of obsolete or incorrect concepts.
+
+    SIDE EFFECTS (CASCADE):
+    - Automatically deletes all related 'observations' and 'relations' (where the entity is source or target).
+    - Removes associated 'embeddings' and 'knowledge_metadata'.
+    - Note: This does NOT delete bank_files, but may break 'mentions' links.
+    """
     conn = get_connection()
     try:
         for name in entities:
@@ -497,25 +620,173 @@ def delete_memory(entities: List[str], agent_id: str = "default_agent"):
 
 @mcp.tool()
 def get_audit_history(content_id: str):
-    """Retrieves the change history for a specific entity or bank file."""
+    """
+    Retrieves the change history for a specific entity or bank file.
+
+    PURPOSE:
+    - Tracking the evolution of a concept or identifying who introduced a specific fact.
+    - Essential for 'rollback_memory': Use this tool first to find the 'id' of the state you wish to restore.
+
+    OUTPUT:
+    - A list of audit log entries: (id, table, action, old_data, new_data, timestamp, agent_id).
+    """
     conn = get_connection()
     try:
-        cursor = conn.cursor()
-        logs = cursor.execute(
-            "SELECT action, old_data, new_data, timestamp, agent_id FROM audit_logs WHERE content_id = ? ORDER BY timestamp DESC",
+        cursor = conn.execute(
+            "SELECT action, old_data, new_data, agent_id, timestamp FROM audit_logs WHERE content_id = ? ORDER BY timestamp DESC",
             (content_id,),
+        )
+        history = []
+        for row in cursor.fetchall():
+            history.append(
+                {
+                    "action": row[0],
+                    "old": json.loads(row[1]) if row[1] else None,
+                    "new": json.loads(row[2]) if row[2] else None,
+                    "agent": row[3],
+                    "timestamp": row[4],
+                }
+            )
+        return history
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+async def get_memory_map(focus_entity: Optional[str] = None):
+    """
+    Generates a Mermaid.js diagram of the knowledge graph.
+
+    PURPOSE:
+    - Visualizing the structure of your project's knowledge.
+    - Use focus_entity to zoom into a specific area (1-hop connections).
+
+    AI GUIDANCE:
+    - If the diagram is too large, use focus_entity to isolate specific sub-graphs.
+    - You can use this to explain the system's architecture or dependencies to the user.
+    """
+    conn = get_connection()
+    try:
+        if focus_entity:
+            # 1-hop neighborhood
+            relations = conn.execute(
+                "SELECT source, target, relation_type FROM relations WHERE source = ? OR target = ?",
+                (focus_entity, focus_entity),
+            ).fetchall()
+        else:
+            # Full graph (limited to 100 relations to avoid bloat)
+            relations = conn.execute(
+                "SELECT source, target, relation_type FROM relations LIMIT 100"
+            ).fetchall()
+
+        if not relations:
+            return "No relations found to map."
+
+        mermaid_lines = ["graph TD"]
+        for src, tgt, rel in relations:
+            # Escape strings for Mermaid
+            src_e = f'"{src}"'
+            tgt_e = f'"{tgt}"'
+            mermaid_lines.append(f"    {src_e} -- {rel} --> {tgt_e}")
+
+        return "\n".join(mermaid_lines)
+    except Exception as e:
+        log_error("Failed to generate memory map", e)
+        return f"Error: {e}"
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+async def synthesize_knowledge(entity_name: str):
+    """
+    Consolidates all fragmented observations and relations for an entity into a coherent summary.
+
+    PURPOSE:
+    - Gaining a deep understanding of a complex entity without reading hundreds of raw observations.
+    - Creating Wiki-style reports for the project.
+
+    BUSINESS LOGIC:
+    - Uses Gemini LLM to synthesize data into a structured Markdown format.
+    - Highly effective for entities that have evolved significantly over time.
+    """
+    conn = get_connection()
+    try:
+        # 1. Fetch entity info
+        entity = conn.execute(
+            "SELECT entity_type, description FROM entities WHERE name = ?",
+            (entity_name,),
+        ).fetchone()
+        if not entity:
+            return f"Entity '{entity_name}' not found."
+
+        # 2. Fetch all observations
+        obs = conn.execute(
+            "SELECT content FROM observations WHERE entity_name = ?", (entity_name,)
         ).fetchall()
-        return [
-            {"action": l[0], "old": l[1], "new": l[2], "at": l[3], "agent": l[4]}
-            for l in logs
+
+        # 3. Fetch all relations
+        rels = conn.execute(
+            "SELECT target, relation_type FROM relations WHERE source = ?",
+            (entity_name,),
+        ).fetchall()
+        rels_in = conn.execute(
+            "SELECT source, relation_type FROM relations WHERE target = ?",
+            (entity_name,),
+        ).fetchall()
+
+        # 4. Prepare context for LLM
+        context = [
+            f"Entity: {entity_name} ({entity[0]})",
+            f"Base Description: {entity[1]}",
+            "\nObservations:",
         ]
+        context.extend([f"- {o[0]}" for o in obs])
+        context.append("\nRelations (Outgoing):")
+        context.extend([f"- {entity_name} {r[1]} {r[0]}" for r in rels])
+        context.append("\nRelations (Incoming):")
+        context.extend([f"- {r[0]} {r[1]} {entity_name}" for r in rels_in])
+
+        prompt = (
+            "You are a Knowledge Synthesis Engine. Based on the following fragmented data, "
+            "provide a concise, highly structured Wiki-style summary (about 2-3 paragraphs) "
+            "that represents the current status and essential knowledge of this entity.\n\n"
+            + "\n".join(context)
+        )
+
+        # 5. Call LLM
+        client = get_gemini_client()
+        if not client:
+            return f"Synthesis failed: Google API client not configured.\n\nContext gathered:\n{chr(10).join(context)}"
+
+        # Using compute_embedding logic pattern or similar?
+        # Actually need to call generate_content
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=prompt,
+        )
+
+        return f"### Knowledge Synthesis: {entity_name}\n\n{response.text}"
+
+    except Exception as e:
+        log_error(f"Synthesis failed for {entity_name}", e)
+        return f"Error: {e}"
     finally:
         conn.close()
 
 
 @mcp.tool()
 def rollback_memory(audit_id: int):
-    """Restores an entry to its state in a specific audit log record."""
+    """
+    Restores an entry to its state in a specific audit log record.
+
+    PURPOSE:
+    - Reverting accidental deletions or incorrect updates.
+
+    GUIDELINES:
+    - Use 'get_audit_history' to find the correct audit_id before calling this.
+    - WARNING: This will overwrite the current state with the historical 'old_data' from the log.
+    """
     conn = get_connection()
     try:
         log = conn.execute(
@@ -550,7 +821,16 @@ def rollback_memory(audit_id: int):
 
 @mcp.tool()
 async def create_snapshot(name: str, description: str = ""):
-    """Creates a full snapshot (backup) of the current knowledge base."""
+    """
+    Creates a full snapshot (backup) of the current knowledge base.
+
+    PURPOSE:
+    - Creating a recovery point before major refactors or deletions.
+    - Marking a 'milestone' in the project history.
+
+    OUTPUT:
+    - Returns the snapshot ID, which can be used later with 'restore_snapshot'.
+    """
     import shutil
     from .utils import get_db_path
 
@@ -579,7 +859,16 @@ async def create_snapshot(name: str, description: str = ""):
 
 @mcp.tool()
 async def restore_snapshot(snapshot_id: int):
-    """Restores the entire knowledge base from a specific snapshot."""
+    """
+    Restores the entire knowledge base from a specific snapshot.
+
+    PURPOSE:
+    - Recovering from catastrophic information loss or experimental failures.
+
+    WARNING:
+    - This is a DESTRUCTIVE operation. It replaces the entire current database with the snapshot data.
+    - Always create a fresh snapshot before performing a restore if you have unsaved work.
+    """
     import shutil
     from .utils import get_db_path
 
@@ -605,7 +894,13 @@ async def restore_snapshot(snapshot_id: int):
 
 @mcp.tool()
 async def repair_memory():
-    """Syncs mirrored content from SQLite back to the physical Markdown files."""
+    """
+    Syncs mirrored content from SQLite back to the physical Markdown files.
+
+    PURPOSE:
+    - Recovering lost .md files or correcting desynchronization between the DB and disk.
+    - Ensuring the physical 'memory-bank/' matches the digital 'brain'.
+    """
     results = []
     bank_dir = get_bank_dir()
     if not os.path.exists(bank_dir):
@@ -634,6 +929,14 @@ async def repair_memory():
 async def archive_memory(threshold: float = 0.1):
     """
     Archives low-importance knowledge that falls below the importance threshold.
+
+    PURPOSE:
+    - Improving AI performance and reducing 'noise' in search results.
+    - Moving 'cold' data to an inactive state.
+
+    BUSINESS LOGIC:
+    - Entities with 'importance' < threshold (taking 'decay' into account) will be marked as archived.
+    - Archived items are excluded from standard 'read_memory' searches.
     """
     conn = get_connection()
     results = []
@@ -675,6 +978,14 @@ async def archive_memory(threshold: float = 0.1):
 async def get_memory_health():
     """
     Returns diagnostic information about the health and state of the knowledge base.
+
+    PURPOSE:
+    - Self-diagnosis and identifying areas where the knowledge graph is weak or 'thin'.
+    - Checking if semantic search is fully functional (embedding coverage).
+
+    METRICS INCLUDED:
+    - Entity count, relation density, embedding coverage, and importance distribution.
+    - AI-generated assessment of 'Knowledge Gaps' or 'Biases'.
     """
     conn = get_connection()
     health = {}

@@ -1,0 +1,72 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/test_phase13.py::test_memory_map PASSED                            [ 33%]
+tests/test_phase13.py::test_synthesize_knowledge FAILED                  [ 66%]
+tests/test_phase13.py::test_conflict_detection FAILED                    [100%]
+
+================================== FAILURES ===================================
+__________________________ test_synthesize_knowledge __________________________
+
+mock_gemini = <MagicMock name='get_gemini_client()' id='1794720106256'>
+
+    @pytest.mark.asyncio
+    async def test_synthesize_knowledge(mock_gemini):
+        init_db()
+        # Mock for synthesize_knowledge
+        mock_gemini.models.generate_content.return_value = MagicMock(text="Synthesized info about Python.")
+    
+        await save_memory(
+            entities=[{"name": "Python", "entity_type": "Language"}],
+            observations=[{"entity_name": "Python", "content": "Popular for AI"}]
+        )
+    
+        summary = await synthesize_knowledge("Python")
+>       assert "### Knowledge Synthesis: Python" in summary
+E       assert '### Knowledge Synthesis: Python' in "Error: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}"
+
+tests\test_phase13.py:31: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[SharedMemoryServer ERROR] Synthesis failed for Python: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}
+___________________________ test_conflict_detection ___________________________
+
+mock_gemini = <MagicMock name='get_gemini_client()' id='1793220595344'>
+
+    @pytest.mark.asyncio
+    async def test_conflict_detection(mock_gemini):
+        init_db()
+    
+        # 1. Save initial knowledge
+        await save_memory(
+            entities=[{"name": "Status", "entity_type": "State"}],
+            observations=[{"entity_name": "Status", "content": "The system is ONLINE."}]
+        )
+    
+        # 2. Mock Gemini to detect a conflict
+        # We need to simulate the JSON response from _check_conflict
+        mock_gemini.models.generate_content.return_value = MagicMock(
+            text='{"conflict": true, "reason": "New info says OFFLINE while old says ONLINE"}'
+        )
+    
+        # 3. Save conflicting knowledge
+        res = await save_memory(
+            observations=[{"entity_name": "Status", "content": "The system is OFFLINE."}]
+        )
+    
+        # 4. Verify conflict was reported and stored
+>       assert "conflicts_detected" in res
+E       AssertionError: assert 'conflicts_detected' in {'message': 'Saved 1 observations', 'status': 'success'}
+
+tests\test_phase13.py:56: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[SharedMemoryServer ERROR] Conflict check failed for Status: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}
+=========================== short test summary info ===========================
+FAILED tests/test_phase13.py::test_synthesize_knowledge - assert '### Knowled...
+FAILED tests/test_phase13.py::test_conflict_detection - AssertionError: asser...
+========================= 2 failed, 1 passed in 2.32s =========================

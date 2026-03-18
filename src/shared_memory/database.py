@@ -1,6 +1,7 @@
 import sqlite3
 import time
 import random
+
 try:
     from .utils import get_db_path, log_error
 except (ImportError, ValueError):
@@ -48,6 +49,7 @@ def init_db():
             name TEXT PRIMARY KEY,
             entity_type TEXT,
             description TEXT,
+            importance INTEGER DEFAULT 5,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_by TEXT,
@@ -118,10 +120,22 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
+            name TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            description TEXT,
-            file_path TEXT
+            db_path TEXT NOT NULL
+        )
+    """)
+    # Conflicts table (New in Phase 13)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conflicts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_name TEXT NOT NULL,
+            existing_content TEXT NOT NULL,
+            new_content TEXT NOT NULL,
+            reason TEXT,
+            agent_id TEXT,
+            detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            resolved INTEGER DEFAULT 0
         )
     """)
     # Migrations for Phase 11
@@ -134,6 +148,7 @@ def init_db():
         )
         cursor.execute("ALTER TABLE entities ADD COLUMN created_by TEXT")
         cursor.execute("ALTER TABLE entities ADD COLUMN updated_by TEXT")
+        cursor.execute("ALTER TABLE entities ADD COLUMN importance INTEGER DEFAULT 5")
     except sqlite3.OperationalError:
         pass
 
