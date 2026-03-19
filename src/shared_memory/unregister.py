@@ -6,9 +6,12 @@ from pathlib import Path
 
 
 def get_config_paths():
+    """Detect potential MCP configuration file paths on Windows."""
     appdata = os.environ.get("APPDATA")
+    home = Path.home()
     if not appdata:
         return {}
+
     return {
         "Claude Desktop": Path(appdata) / "Claude" / "claude_desktop_config.json",
         "Cursor (Roo Code/Cline)": Path(appdata)
@@ -25,16 +28,18 @@ def get_config_paths():
         / "saoudrizwan.claude-dev"
         / "settings"
         / "cline_mcp_settings.json",
-        "Antigravity (Central)": Path(
-            "C:/Users/saiha/.gemini/antigravity/mcp_config.json"
-        ),
+        "Antigravity (Central)": home / ".gemini" / "antigravity" / "mcp_config.json",
+        "Cursor (Global)": Path(appdata) / "Cursor" / "User" / "settings.json",
+        "Cloud Code (User)": Path(appdata) / "Code" / "User" / "mcp.json",
     }
 
 
 def get_prompt_files():
+    """Identify system prompt files to clean up."""
     cwd = Path.cwd()
+    home = Path.home()
     return [
-        Path("C:/Users/saiha/.gemini/GEMINI.md"),
+        home / ".gemini" / "GEMINI.md",
         cwd / ".gemini" / "GEMINI.md",
         cwd / ".cursorrules",
         cwd / ".clinerules",
@@ -56,15 +61,25 @@ def unregister_mcp(dry_run=False, isolate=False):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 config = json.load(f)
+            
+            updated = False
+            # Standard mcpServers
             if "mcpServers" in config and server_name in config["mcpServers"]:
                 del config["mcpServers"][server_name]
+                updated = True
+            
+            # Native Cursor
+            if "cursor.mcpServers" in config and server_name in config["cursor.mcpServers"]:
+                del config["cursor.mcpServers"][server_name]
+                updated = True
+
+            if updated:
                 if not dry_run:
                     with open(path, "w", encoding="utf-8") as f:
                         json.dump(config, f, indent=2)
                 print(f"  [SUCCESS] Removed {server_name} from {name}")
         except Exception as e:
             import sys
-
             sys.stderr.write(f"  [ERROR] Failed {name}: {e}\n")
 
     print("\n--- Prompt Instruction Cleanup ---")
@@ -74,23 +89,7 @@ def unregister_mcp(dry_run=False, isolate=False):
         try:
             content = p.read_text(encoding="utf-8")
             if "# SHARED MEMORY SERVER INSTRUCTION" in content:
-                # Basic removal logic: remove everything from the marker to the end of that block
-                lines = content.splitlines()
-                new_lines = []
-                skipping = False
-                for line in lines:
-                    if "# SHARED MEMORY SERVER INSTRUCTION" in line:
-                        skipping = True
-                        continue
-                    if skipping and line.strip() == "":
-                        # Stop skipping at next empty line
-                        skipping = False
-                        continue
-                    if not skipping:
-                        new_lines.append(line)
-
-                # Better approach: If we know the instructions are at the end, we can just trim.
-                # Since our register.py appends to the end, we'll look for the marker.
+                # Basic removal logic: locate marker and trim
                 idx = content.find("# SHARED MEMORY SERVER INSTRUCTION")
                 new_content = content[:idx].strip()
 
@@ -99,7 +98,6 @@ def unregister_mcp(dry_run=False, isolate=False):
                 print(f"  [SUCCESS] Cleaned {p.name}")
         except Exception as e:
             import sys
-
             sys.stderr.write(f"  [ERROR] Failed {p.name}: {e}\n")
 
 

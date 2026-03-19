@@ -10,6 +10,7 @@ from typing import List
 def get_config_paths():
     """Detect potential MCP configuration file paths on Windows."""
     appdata = os.environ.get("APPDATA")
+    home = Path.home()
     if not appdata:
         return {}
 
@@ -29,19 +30,19 @@ def get_config_paths():
         / "saoudrizwan.claude-dev"
         / "settings"
         / "cline_mcp_settings.json",
-        "Antigravity (Central)": Path(
-            "C:/Users/saiha/.gemini/antigravity/mcp_config.json"
-        ),
+        "Antigravity (Central)": home / ".gemini" / "antigravity" / "mcp_config.json",
         "Cursor (Global)": Path(appdata) / "Cursor" / "User" / "settings.json",
+        "Cloud Code (User)": Path(appdata) / "Code" / "User" / "mcp.json",
     }
 
 
 def get_prompt_files() -> List[Path]:
     """Identify system prompt files to inject instructions into."""
     cwd = Path.cwd()
+    home = Path.home()
 
     paths = [
-        Path("C:/Users/saiha/.gemini/GEMINI.md"),  # Global Antigravity
+        home / ".gemini" / "GEMINI.md",  # Global Antigravity
         cwd / ".gemini" / "GEMINI.md",  # Local Antigravity
         cwd / ".cursorrules",  # Local Cursor
         cwd / ".clinerules",  # Local Cline/Roo
@@ -52,6 +53,12 @@ def get_prompt_files() -> List[Path]:
 def get_server_command():
     """Get the absolute command to run the server."""
     cwd = os.getcwd()
+    
+    # Check if we are running as a frozen executable (PyInstaller)
+    if getattr(sys, "frozen", False):
+        # Bundled executable path
+        return [sys.executable]
+    
     venv_python = os.path.join(cwd, ".venv", "Scripts", "python.exe")
     server_script = os.path.join(cwd, "src", "shared_memory", "server.py")
 
@@ -117,15 +124,19 @@ def register_mcp(dry_run=False, isolate=False):
         if not path.parent.exists():
             continue
 
-        if not path.exists() and name != "Antigravity (Central)":
+        if not path.exists() and name not in ["Antigravity (Central)", "Cloud Code (User)", "Cursor (Global)"]:
             print(f"  [SKIP] {name}: {path} not found.")
             continue
 
         try:
             config = {}
             if path.exists():
-                with open(path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                except json.JSONDecodeError:
+                    print(f"  [WARN] {name}: Failed to parse {path}. Skipping.")
+                    continue
 
             # Determine where to put the MCP config based on file type
             if any(
@@ -134,15 +145,24 @@ def register_mcp(dry_run=False, isolate=False):
                     "mcp_config.json",
                     "cline_mcp_settings.json",
                     "claude_desktop_config.json",
+                    "mcp.json",
                 ]
             ):
                 if "mcpServers" not in config:
                     config["mcpServers"] = {}
                 config["mcpServers"][server_name] = mcp_config
-            elif "settings.json" in str(path):
-                print(
-                    "  [SKIP] Global Cursor settings.json is complex. Please register manually via UI if needed."
-                )
+            elif "settings.json" in str(path) and "Cursor" in name:
+                # Native Cursor Registration
+                if "cursor.mcpServers" not in config:
+                    config["cursor.mcpServers"] = {}
+                
+                # Native Cursor format slightly different for 'command' type
+                config["cursor.mcpServers"][server_name] = {
+                    "type": "command",
+                    "command": f'"{cmd[0]}" {" ".join(cmd[1:])}'.strip(),
+                    "env": mcp_config["env"]
+                }
+            else:
                 continue
 
             if not dry_run:
