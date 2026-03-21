@@ -18,3 +18,5 @@ memory-bank-*/
 # Local config & Logs
 .env
 *.log
+test_out.txt
+verify_out.txt

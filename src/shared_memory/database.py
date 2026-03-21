@@ -40,6 +40,26 @@ def get_connection():
     return conn
 
 
+def _add_column_if_missing(cursor, table, col_def):
+    """
+    Safely adds a column to a table if it doesn't already exist.
+    """
+    col_name = col_def.split()[0]
+    cursor.execute(f"PRAGMA table_info({table})")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if col_name in columns:
+        return
+
+    try:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+    except sqlite3.OperationalError as e:
+        log_error(
+            f"CRITICAL: Migration failed for table '{table}' adding '{col_def}'", e
+        )
+        raise
+
+
 @retry_on_db_lock()
 def init_db():
     conn = get_connection()
@@ -139,36 +159,24 @@ def init_db():
         )
     """)
     # Migrations for Phase 11
-    try:
-        cursor.execute(
-            "ALTER TABLE entities ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
-        cursor.execute(
-            "ALTER TABLE entities ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
-        cursor.execute("ALTER TABLE entities ADD COLUMN created_by TEXT")
-        cursor.execute("ALTER TABLE entities ADD COLUMN updated_by TEXT")
-        cursor.execute("ALTER TABLE entities ADD COLUMN importance INTEGER DEFAULT 5")
-    except sqlite3.OperationalError:
-        pass
+    _add_column_if_missing(
+        cursor, "entities", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    _add_column_if_missing(
+        cursor, "entities", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    _add_column_if_missing(cursor, "entities", "created_by TEXT")
+    _add_column_if_missing(cursor, "entities", "updated_by TEXT")
+    _add_column_if_missing(cursor, "entities", "importance INTEGER DEFAULT 5")
 
-    try:
-        cursor.execute(
-            "ALTER TABLE relations ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
-        cursor.execute("ALTER TABLE relations ADD COLUMN created_by TEXT")
-    except sqlite3.OperationalError:
-        pass
+    _add_column_if_missing(
+        cursor, "relations", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    _add_column_if_missing(cursor, "relations", "created_by TEXT")
 
-    try:
-        cursor.execute("ALTER TABLE observations ADD COLUMN created_by TEXT")
-    except sqlite3.OperationalError:
-        pass
+    _add_column_if_missing(cursor, "observations", "created_by TEXT")
 
-    try:
-        cursor.execute("ALTER TABLE bank_files ADD COLUMN updated_by TEXT")
-    except sqlite3.OperationalError:
-        pass
+    _add_column_if_missing(cursor, "bank_files", "updated_by TEXT")
 
     conn.commit()
     conn.close()

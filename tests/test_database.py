@@ -46,3 +46,81 @@ def test_update_access_and_stability(temp_db):
     assert row[0] == 2
     assert row[1] > initial_stability
     conn.close()
+
+
+def test_migration_from_partial_schema(temp_db):
+    """Verifies that init_db correctly migrates a database with a partial schema."""
+    # 1. Setup a partial schema (simulating an older version)
+    conn = sqlite3.connect(temp_db)
+    conn.execute(
+        """
+        CREATE TABLE entities (
+            name TEXT PRIMARY KEY,
+            entity_type TEXT,
+            description TEXT
+        )
+    """
+    )
+    # Add only one of the migration columns to trigger the original bug
+    conn.execute(
+        "ALTER TABLE entities ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    conn.commit()
+    conn.close()
+
+    # 2. Run init_db()
+    init_db()
+
+    # 3. Verify all columns are now present
+    conn = sqlite3.connect(temp_db)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(entities)")
+    columns = [col[1] for col in cursor.fetchall()]
+    conn.close()
+
+    expected_columns = [
+        "name",
+        "entity_type",
+        "description",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "importance",
+    ]
+    for col in expected_columns:
+        assert col in columns, f"Column {col} is missing from entities table"
+
+
+def test_migration_relations_partial(temp_db):
+    """Verifies that relations table is correctly migrated if columns are missing."""
+    # Setup partial relations table
+    conn = sqlite3.connect(temp_db)
+    conn.execute("CREATE TABLE entities (name TEXT PRIMARY KEY)")
+    conn.execute(
+        """
+        CREATE TABLE relations (
+            source TEXT,
+            target TEXT,
+            relation_type TEXT,
+            PRIMARY KEY (source, target, relation_type),
+            FOREIGN KEY (source) REFERENCES entities (name),
+            FOREIGN KEY (target) REFERENCES entities (name)
+        )
+    """
+    )
+    conn.execute(
+        "ALTER TABLE relations ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    )
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    conn = sqlite3.connect(temp_db)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(relations)")
+    columns = [col[1] for col in cursor.fetchall()]
+    conn.close()
+
+    assert "created_by" in columns

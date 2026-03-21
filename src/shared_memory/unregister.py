@@ -61,15 +61,18 @@ def unregister_mcp(dry_run=False, isolate=False):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            
+
             updated = False
             # Standard mcpServers
             if "mcpServers" in config and server_name in config["mcpServers"]:
                 del config["mcpServers"][server_name]
                 updated = True
-            
+
             # Native Cursor
-            if "cursor.mcpServers" in config and server_name in config["cursor.mcpServers"]:
+            if (
+                "cursor.mcpServers" in config
+                and server_name in config["cursor.mcpServers"]
+            ):
                 del config["cursor.mcpServers"][server_name]
                 updated = True
 
@@ -80,6 +83,7 @@ def unregister_mcp(dry_run=False, isolate=False):
                 print(f"  [SUCCESS] Removed {server_name} from {name}")
         except Exception as e:
             import sys
+
             sys.stderr.write(f"  [ERROR] Failed {name}: {e}\n")
 
     print("\n--- Prompt Instruction Cleanup ---")
@@ -98,6 +102,7 @@ def unregister_mcp(dry_run=False, isolate=False):
                 print(f"  [SUCCESS] Cleaned {p.name}")
         except Exception as e:
             import sys
+
             sys.stderr.write(f"  [ERROR] Failed {p.name}: {e}\n")
 
 

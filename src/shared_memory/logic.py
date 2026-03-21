@@ -29,8 +29,14 @@ def calculate_importance(
 ) -> float:
     try:
         last_accessed = datetime.strptime(last_accessed_str, "%Y-%m-%d %H:%M:%S")
-    except Exception:
+    except Exception as e:
         # Fallback to now if timestamp is corrupted or missing
+        from .utils import log_error
+
+        log_error(
+            f"Logic: Timestamp parsing failed for '{last_accessed_str}', falling back to now",
+            e,
+        )
         last_accessed = datetime.now()
 
     # Decay Factor mitigated by stability

@@ -53,12 +53,12 @@ def get_prompt_files() -> List[Path]:
 def get_server_command():
     """Get the absolute command to run the server."""
     cwd = os.getcwd()
-    
+
     # Check if we are running as a frozen executable (PyInstaller)
     if getattr(sys, "frozen", False):
         # Bundled executable path
         return [sys.executable]
-    
+
     venv_python = os.path.join(cwd, ".venv", "Scripts", "python.exe")
     server_script = os.path.join(cwd, "src", "shared_memory", "server.py")
 
@@ -124,7 +124,11 @@ def register_mcp(dry_run=False, isolate=False):
         if not path.parent.exists():
             continue
 
-        if not path.exists() and name not in ["Antigravity (Central)", "Cloud Code (User)", "Cursor (Global)"]:
+        if not path.exists() and name not in [
+            "Antigravity (Central)",
+            "Cloud Code (User)",
+            "Cursor (Global)",
+        ]:
             print(f"  [SKIP] {name}: {path} not found.")
             continue
 
@@ -155,12 +159,12 @@ def register_mcp(dry_run=False, isolate=False):
                 # Native Cursor Registration
                 if "cursor.mcpServers" not in config:
                     config["cursor.mcpServers"] = {}
-                
+
                 # Native Cursor format slightly different for 'command' type
                 config["cursor.mcpServers"][server_name] = {
                     "type": "command",
                     "command": f'"{cmd[0]}" {" ".join(cmd[1:])}'.strip(),
-                    "env": mcp_config["env"]
+                    "env": mcp_config["env"],
                 }
             else:
                 continue

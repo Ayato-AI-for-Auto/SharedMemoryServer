@@ -7,6 +7,7 @@ from typing import List, Optional, Dict
 from fastmcp import FastMCP
 
 import json
+import datetime
 
 try:
     from .utils import log_error, get_bank_dir, mask_sensitive_data
@@ -148,6 +149,29 @@ async def save_memory(
 
     conn = get_connection()
     try:
+        # 0. Data Validation (Phase 2 Hardening)
+        if entities:
+            for e in entities:
+                if not e.get("name"):
+                    raise ValueError("Entity 'name' is required and cannot be empty.")
+                if "importance" in e:
+                    try:
+                        imp = int(e["importance"])
+                        if not (1 <= imp <= 10):
+                            raise ValueError(f"Importance for '{e['name']}' must be between 1 and 10.")
+                    except (TypeError, ValueError) as ve:
+                        raise ValueError(f"Invalid importance value for '{e['name']}': {e['importance']}. Must be an integer 1-10.") from ve
+        
+        if relations:
+            for r in relations:
+                if not r.get("source") or not r.get("target") or not r.get("relation_type"):
+                    raise ValueError("Relation requires 'source', 'target', and 'relation_type'.")
+        
+        if observations:
+            for o in observations:
+                if not o.get("entity_name") or not o.get("content"):
+                    raise ValueError("Observation requires 'entity_name' and 'content'.")
+
         # 1. Save Entities
         if entities:
             for e in entities:
@@ -839,7 +863,7 @@ async def create_snapshot(name: str, description: str = ""):
     if not os.path.exists(snapshot_dir):
         os.makedirs(snapshot_dir)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     snapshot_file = os.path.join(snapshot_dir, f"snapshot_{ts}.db")
 
     try:
