@@ -1,0 +1,7 @@
+Source: Environment Variable
+Key Masked: AIza...ccmw
+Key Length: 39
+Current Dir: C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer
+Settings Path: N/A
+Full Env GOOGLE: 'AIzaSyBqUFeFonNUfqEq5CvqGhCxoo0Iyo_ccmw'
+Full Env GEMINI: None

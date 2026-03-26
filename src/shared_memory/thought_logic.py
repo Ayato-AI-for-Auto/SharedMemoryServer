@@ -53,7 +53,7 @@ async def process_thought_core(
     thought_number: int,
     total_thoughts: int,
     next_thought_needed: bool,
-    is_revision: Optional[bool] = False,
+    is_revision: bool = False,
     revises_thought: Optional[int] = None,
     branch_from_thought: Optional[int] = None,
     branch_id: Optional[str] = None,
@@ -62,8 +62,6 @@ async def process_thought_core(
     """
     Implements the core logic for sequential thinking with security, validation, and persistence.
     """
-    import sys
-    sys.stderr.write(f"\n[CORE] Session: {session_id}, Next: {next_thought_needed}\n")
     try:
         # 1. Security: Mask sensitive data in the thought content
         masked_thought = mask_sensitive_data(thought)
