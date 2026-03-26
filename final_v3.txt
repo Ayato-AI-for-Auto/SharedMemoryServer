@@ -1,0 +1,42 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items / 1 error
+
+=================================== ERRORS ====================================
+_____________ ERROR collecting tests/test_health_optimization.py ______________
+.venv\Lib\site-packages\_pytest\python.py:507: in importtestmodule
+    mod = import_path(
+.venv\Lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\importlib\__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1206: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1178: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1149: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:690: in _load_unlocked
+    ???
+.venv\Lib\site-packages\_pytest\assertion\rewrite.py:188: in exec_module
+    source_stat, co = _rewrite_test(fn, self.config)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\_pytest\assertion\rewrite.py:357: in _rewrite_test
+    tree = ast.parse(source, filename=strfn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\ast.py:50: in parse
+    return compile(source, filename, mode, flags,
+E     File "C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer\tests\test_health_optimization.py", line 20
+E       mock_gemini.models.list.return_value = [type('Model', (), {'name': 'models/gemini-pro'})]
+E       ^^^^^^^^^^^
+E   IndentationError: expected an indented block after 'with' statement on line 16
+=========================== short test summary info ===========================
+ERROR tests/test_health_optimization.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+============================== 1 error in 1.61s ===============================

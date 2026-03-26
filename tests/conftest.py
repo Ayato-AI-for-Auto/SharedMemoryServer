@@ -41,26 +41,34 @@ def mock_env(temp_db, temp_bank):
         yield
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_gemini():
-    """Mocks the Gemini client for embeddings and generation."""
-    # We must patch where it's USED because of "from ... import ..."
-    with (
-        patch("shared_memory.embeddings.get_gemini_client") as mock_get_eb,
-        patch("shared_memory.server.get_gemini_client") as mock_get_sv,
-    ):
-        mock_client = MagicMock()
-        mock_get_eb.return_value = mock_client
-        mock_get_sv.return_value = mock_client
+    """Mocks the Gemini client across all modular components by default."""
+    # We patch all potential entry points for get_gemini_client
+    patches = [
+        patch("shared_memory.embeddings.get_gemini_client"),
+        patch("shared_memory.graph.get_gemini_client"),
+        patch("shared_memory.search.get_gemini_client"),
+        patch("shared_memory.management.get_gemini_client"),
+        patch("shared_memory.distiller.get_gemini_client"),
+    ]
 
-        # Mock for embeddings: client.models.embed_content(...).embeddings[0].values
-        mock_embedding_result = MagicMock()
-        mock_embedding_result.embeddings = [MagicMock(values=[0.1] * 768)]
-        mock_client.models.embed_content.return_value = mock_embedding_result
+    mock_client = MagicMock()
+    # Mock for embeddings: client.models.embed_content(...).embeddings[0].values
+    mock_embedding_result = MagicMock()
+    mock_embedding_result.embeddings = [MagicMock(values=[0.1] * 768)]
+    mock_client.models.embed_content.return_value = mock_embedding_result
 
-        # Mock for generation: client.models.generate_content(...).text
-        mock_client.models.generate_content.return_value = MagicMock(
-            text='{"conflict": false, "reason": ""}'
-        )
+    mock_client.models.generate_content.return_value = MagicMock(
+        text='{"conflict": false, "reason": ""}'
+    )
+    mock_client.models.list.return_value = [type('Model', (), {'name': 'models/gemini-pro'})]
 
-        yield mock_client
+    handlers = [p.start() for p in patches]
+    for h in handlers:
+        h.return_value = mock_client
+
+    yield mock_client
+
+    for p in patches:
+        p.stop()

@@ -1,45 +1,108 @@
-import numpy as np
-import math
-from datetime import datetime
+from typing import List, Optional, Dict, Any
+import json
+import sqlite3
+from shared_memory.utils import log_error
+from shared_memory.database import get_connection
+from shared_memory import graph, bank, search, management, troubleshooting, health
+from shared_memory.exceptions import SharedMemoryError, DatabaseError
 
 
-def cosine_similarity(v1, v2):
-    if v1 is None or v2 is None:
-        return 0
-    # Vectorized similarity for single pair
-    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-
-
-def batch_cosine_similarity(query_v, vectors_v):
+async def save_memory_core(
+    entities: List[Dict[str, Any]] = [],
+    relations: List[Dict[str, Any]] = [],
+    observations: List[Dict[str, Any]] = [],
+    bank_files: Dict[str, str] = {},
+    agent_id: str = "default_agent",
+) -> str:
     """
-    Experimental vectorized similarity for a batch of vectors.
-    vectors_v should be a 2D numpy array.
+    Core logic for saving memory. Orchestrates graph and bank updates within a transaction.
     """
-    if query_v is None or vectors_v.size == 0:
-        return np.array([])
-    dot_product = np.dot(vectors_v, query_v)
-    norms = np.linalg.norm(vectors_v, axis=1) * np.linalg.norm(query_v)
-    return np.divide(
-        dot_product, norms, out=np.zeros_like(dot_product), where=norms != 0
+    conn = get_connection()
+    results = []
+    try:
+        if entities:
+            results.append(await graph.save_entities(entities, agent_id, conn))
+        if relations:
+            results.append(await graph.save_relations(relations, agent_id, conn))
+        if observations:
+            res, conflicts = await graph.save_observations(observations, agent_id, conn)
+            results.append(res)
+            if conflicts:
+                results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
+        if bank_files:
+            results.append(await bank.save_bank_files(bank_files, agent_id, conn))
+
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.rollback()
+        log_error("Database transaction failed in save_memory_core", e)
+        raise DatabaseError(f"Transaction failed: {e}") from e
+    except Exception as e:
+        conn.rollback()
+        log_error("Unexpected error in save_memory_core", e)
+        raise SharedMemoryError(f"Unexpected error: {e}") from e
+    finally:
+        conn.close()
+    return " | ".join(results)
+
+
+async def read_memory_core(query: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Core logic for reading memory.
+    """
+    try:
+        if query:
+            graph_data, bank_data = await search.perform_search(query)
+        else:
+            graph_data = await graph.get_graph_data()
+            bank_data = await bank.read_bank_data()
+        return {"graph": graph_data, "bank": bank_data}
+    except Exception as e:
+        log_error("Error in read_memory_core", e)
+        raise SharedMemoryError(f"Read failed: {e}") from e
+
+
+# Delegation proxies for management tools to keep server.py clean
+async def get_audit_history_core(limit: int = 20, table_name: Optional[str] = None):
+    return await management.get_audit_history_logic(limit, table_name)
+
+
+async def synthesize_entity(entity_name: str):
+    """Aggregates all known info about an entity into a master summary."""
+    return await search.synthesize_knowledge(entity_name)
+
+
+async def rollback_memory_core(audit_id: int):
+    return await management.rollback_memory_logic(audit_id)
+
+
+async def create_snapshot_core(name: str, description: str):
+    return await management.create_snapshot_logic(name, description)
+
+
+async def restore_snapshot_core(snapshot_id: int):
+    return await management.restore_snapshot_logic(snapshot_id)
+
+
+async def troubleshooting_record_core(problem, solution, env, tags):
+    return await troubleshooting.save_troubleshooting_record(
+        problem, solution, env, tags
     )
 
 
-def calculate_importance(
-    access_count: int, last_accessed_str: str, stability: float = 1.1
-) -> float:
-    try:
-        last_accessed = datetime.strptime(last_accessed_str, "%Y-%m-%d %H:%M:%S")
-    except Exception as e:
-        # Fallback to now if timestamp is corrupted or missing
-        from .utils import log_error
+async def troubleshooting_search_core(query):
+    return await troubleshooting.search_troubleshooting_history(query)
 
-        log_error(
-            f"Logic: Timestamp parsing failed for '{last_accessed_str}', falling back to now",
-            e,
-        )
-        last_accessed = datetime.now()
 
-    # Decay Factor mitigated by stability
-    delta_minutes = (datetime.now() - last_accessed).total_seconds() / 60
-    decay = math.exp(-0.0001 / stability * delta_minutes)
-    return (access_count + 1) * decay
+async def get_memory_health_core():
+    # Mix basic management stats with deep diagnostics
+    mgmt_health = await management.get_memory_health_logic()
+    deep_health = await health.get_comprehensive_diagnostics()
+
+    # Merge reports
+    deep_health["management_stats"] = mgmt_health
+    return deep_health
+
+
+async def repair_memory_core():
+    return await bank.repair_memory_logic()

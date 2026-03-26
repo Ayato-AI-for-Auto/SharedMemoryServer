@@ -1,4 +1,5 @@
 import sqlite3
+import pytest
 from shared_memory.database import init_db, get_connection, update_access
 
 
@@ -20,7 +21,8 @@ def test_init_db_creates_tables(temp_db):
     conn.close()
 
 
-def test_update_access_and_stability(temp_db):
+@pytest.mark.asyncio
+async def test_update_access_and_stability(temp_db):
     init_db()
     # Insert a mock entity first (FK constraint)
     conn = get_connection()
@@ -29,23 +31,25 @@ def test_update_access_and_stability(temp_db):
     )
     conn.commit()
 
-    # First access
-    update_access("test_node")
+    try:
+        # First access
+        await update_access("test_node")
 
-    row = conn.execute(
-        "SELECT access_count, stability FROM knowledge_metadata WHERE content_id = 'test_node'"
-    ).fetchone()
-    assert row[0] == 1
-    initial_stability = row[1]
+        row = conn.execute(
+            "SELECT access_count, stability FROM knowledge_metadata WHERE content_id = 'test_node'"
+        ).fetchone()
+        assert row[0] == 1
+        initial_stability = row[1]
 
-    # Second access (stability should increase)
-    update_access("test_node")
-    row = conn.execute(
-        "SELECT access_count, stability FROM knowledge_metadata WHERE content_id = 'test_node'"
-    ).fetchone()
-    assert row[0] == 2
-    assert row[1] > initial_stability
-    conn.close()
+        # Second access (stability should increase)
+        await update_access("test_node")
+        row = conn.execute(
+            "SELECT access_count, stability FROM knowledge_metadata WHERE content_id = 'test_node'"
+        ).fetchone()
+        assert row[0] == 2
+        assert row[1] > initial_stability
+    finally:
+        conn.close()
 
 
 def test_migration_from_partial_schema(temp_db):

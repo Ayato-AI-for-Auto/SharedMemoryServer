@@ -33,6 +33,7 @@ def get_config_paths():
         "Antigravity (Central)": home / ".gemini" / "antigravity" / "mcp_config.json",
         "Cursor (Global)": Path(appdata) / "Cursor" / "User" / "settings.json",
         "Cloud Code (User)": Path(appdata) / "Code" / "User" / "mcp.json",
+        "Gemini CLI": home / ".gemini" / "settings.json",
     }
 
 
@@ -77,49 +78,9 @@ You have access to SharedMemoryServer MCP.
 """
 
 
-def register_mcp(dry_run=False, isolate=False):
-    config_paths = get_config_paths()
-    cmd = get_server_command()
-    cwd = os.getcwd()
-
-    # Isolation Logic
-    server_name = "SharedMemoryServer"
-    db_name = "shared_memory.db"
-    bank_dir_name = "memory-bank"
-
-    if isolate:
-        # Generate a short hash of the current directory path for uniqueness
-        path_hash = hashlib.md5(cwd.encode("utf-8")).hexdigest()[:8]
-        server_name = f"SharedMemoryServer_{path_hash}"
-        db_name = f"shared_memory.{path_hash}.db"
-        bank_dir_name = f"memory-bank-{path_hash}"
-        print(f"  [INFO] Isolation Mode: Project ID = {path_hash}")
-
-    mcp_config = {
-        "command": cmd[0],
-        "args": cmd[1:],
-        "env": {
-            "MEMORY_DB_PATH": os.path.join(cwd, db_name),
-            "MEMORY_BANK_DIR": os.path.join(cwd, bank_dir_name),
-        },
-    }
-
-    # BYOK Logic
-    google_api_key = os.environ.get("GOOGLE_API_KEY")
-    if not google_api_key and not dry_run:
-        print("\n--- Google AI API Key (BYOK) ---")
-        google_api_key = input(
-            "Enter your Google AI API Key (leave empty to skip semantic search): "
-        ).strip()
-
-    if google_api_key:
-        mcp_config["env"]["GOOGLE_API_KEY"] = google_api_key
-        print(f"  [INFO] API Key configured for {server_name}")
-    else:
-        print("  [WARN] No API Key provided. Semantic search will be disabled.")
-
-    print(f"--- MCP Registration (Dry Run: {dry_run}) ---")
-
+def register_single_mcp(config_paths, server_name, mcp_config, dry_run=False):
+    """Register a single MCP server in all detected configuration files."""
+    print(f"\n--- Registering {server_name} (Dry Run: {dry_run}) ---")
     for name, path in config_paths.items():
         if not path.parent.exists():
             continue
@@ -128,6 +89,7 @@ def register_mcp(dry_run=False, isolate=False):
             "Antigravity (Central)",
             "Cloud Code (User)",
             "Cursor (Global)",
+            "Gemini CLI",
         ]:
             print(f"  [SKIP] {name}: {path} not found.")
             continue
@@ -150,22 +112,23 @@ def register_mcp(dry_run=False, isolate=False):
                     "cline_mcp_settings.json",
                     "claude_desktop_config.json",
                     "mcp.json",
+                    "settings.json",
                 ]
             ):
-                if "mcpServers" not in config:
-                    config["mcpServers"] = {}
-                config["mcpServers"][server_name] = mcp_config
-            elif "settings.json" in str(path) and "Cursor" in name:
-                # Native Cursor Registration
-                if "cursor.mcpServers" not in config:
-                    config["cursor.mcpServers"] = {}
-
-                # Native Cursor format slightly different for 'command' type
-                config["cursor.mcpServers"][server_name] = {
-                    "type": "command",
-                    "command": f'"{cmd[0]}" {" ".join(cmd[1:])}'.strip(),
-                    "env": mcp_config["env"],
-                }
+                if "Cursor" in name and "settings.json" in str(path):
+                    # Native Cursor Registration
+                    if "cursor.mcpServers" not in config:
+                        config["cursor.mcpServers"] = {}
+                    config["cursor.mcpServers"][server_name] = {
+                        "type": "command",
+                        "command": f'"{mcp_config["command"]}" {" ".join(mcp_config["args"])}'.strip(),
+                        "env": mcp_config["env"],
+                    }
+                else:
+                    # Standard mcpServers
+                    if "mcpServers" not in config:
+                        config["mcpServers"] = {}
+                    config["mcpServers"][server_name] = mcp_config
             else:
                 continue
 
@@ -173,12 +136,82 @@ def register_mcp(dry_run=False, isolate=False):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(config, f, indent=2)
-                print(f"  [SUCCESS] Updated {name}")
+                print(f"  [SUCCESS] Updated {name} for {server_name}")
             else:
-                print(f"  [DRY RUN] Would update {name}")
+                print(f"  [DRY RUN] Would update {name} for {server_name}")
 
         except Exception as e:
-            sys.stderr.write(f"  [ERROR] Failed to update {name}: {e}\n")
+            sys.stderr.write(
+                f"  [ERROR] Failed to update {name} for {server_name}: {e}\n"
+            )
+
+
+def register_mcp(dry_run=False, isolate=False):
+    config_paths = get_config_paths()
+    cwd = os.getcwd()
+
+    # 1. SharedMemoryServer Config (Use uv run for consistency)
+    server_name = "SharedMemoryServer"
+    db_name = "shared_memory.db"
+    bank_dir_name = "memory-bank"
+
+    if isolate:
+        path_hash = hashlib.md5(cwd.encode("utf-8")).hexdigest()[:8]
+        server_name = f"SharedMemoryServer_{path_hash}"
+        db_name = f"shared_memory.{path_hash}.db"
+        bank_dir_name = f"memory-bank-{path_hash}"
+
+    sm_path_str = str(Path(cwd)).replace("\\", "/")
+    sm_mcp_config = {
+        "command": "uv",
+        "args": [
+            "run",
+            "--project",
+            sm_path_str,
+            "--no-sync",
+            "python",
+            f"{sm_path_str}/src/shared_memory/server.py",
+        ],
+        "env": {
+            "MEMORY_DB_PATH": os.path.join(cwd, db_name).replace("\\", "/"),
+            "MEMORY_BANK_DIR": os.path.join(cwd, bank_dir_name).replace("\\", "/"),
+        },
+    }
+
+    # BYOK Logic
+    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not api_key and not dry_run:
+        print("\n--- Google / Gemini API Key (BYOK) ---")
+        api_key = input(
+            "Enter your Google/Gemini API Key (leave empty to skip semantic search): "
+        ).strip()
+
+    if api_key:
+        sm_mcp_config["env"]["GOOGLE_API_KEY"] = api_key
+
+    register_single_mcp(config_paths, server_name, sm_mcp_config, dry_run=dry_run)
+
+    # 2. LogicHive Config (Auto-detection)
+    mcp_parent = Path(cwd).parent
+    logichive_path = mcp_parent / "LogicHive"
+    if logichive_path.exists():
+        lh_path_str = str(logichive_path).replace("\\", "/")
+        lh_src_path_str = str(logichive_path / "src").replace("\\", "/")
+        logichive_mcp_config = {
+            "command": "uv",
+            "args": [
+                "run",
+                "--project",
+                lh_path_str,
+                "--no-sync",
+                "python",
+                f"{lh_src_path_str}/mcp_server.py",
+            ],
+            "env": {"PYTHONPATH": f"{lh_path_str};{lh_src_path_str}"},
+        }
+        register_single_mcp(
+            config_paths, "logic-hive", logichive_mcp_config, dry_run=dry_run
+        )
 
     print(f"\n--- System Prompt Integration (Dry Run: {dry_run}) ---")
     prompt_files = get_prompt_files()

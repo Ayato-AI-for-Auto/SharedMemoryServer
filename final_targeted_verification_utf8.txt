@@ -1,0 +1,115 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/test_bank.py::test_initialize_bank PASSED                          [  9%]
+tests/test_bank.py::test_save_bank_files PASSED                          [ 18%]
+tests/test_bank.py::test_read_bank_data PASSED                           [ 27%]
+tests/test_bank.py::test_repair_memory PASSED                            [ 36%]
+tests/test_management.py::test_snapshot_lifecycle PASSED                 [ 45%]
+tests/test_management.py::test_audit_and_rollback FAILED                 [ 54%]
+tests/test_management.py::test_memory_health FAILED                      [ 63%]
+tests/test_health_optimization.py::test_comprehensive_diagnostics FAILED [ 72%]
+tests/test_health_optimization.py::test_embedding_cache_integrity PASSED [ 81%]
+tests/test_health_optimization.py::test_bulk_embedding_optimization PASSED [ 90%]
+tests/test_health_optimization.py::test_logic_health_integration FAILED  [100%]
+
+================================== FAILURES ===================================
+___________________________ test_audit_and_rollback ___________________________
+
+    @pytest.mark.asyncio
+    async def test_audit_and_rollback():
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO entities (name, entity_type, description) VALUES ('X', 'concept', 'Old Dev')"
+        )
+        # Manually add audit log
+        import json
+    
+        conn.execute(
+            "INSERT INTO audit_logs (table_name, content_id, action, old_data, new_data) VALUES (?, ?, ?, ?, ?)",
+            (
+                "entities",
+                "X",
+                "UPDATE",
+                json.dumps({"name": "X", "type": "concept", "desc": "Very Old"}),
+                json.dumps({"desc": "Old Dev"}),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    
+        # Check history
+>       history = await get_audit_history_logic(limit=1)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: get_audit_history_core() missing 1 required positional argument: 'table_name'
+
+tests\test_management.py:60: TypeError
+_____________________________ test_memory_health ______________________________
+
+mock_gemini = <MagicMock name='get_gemini_client()' id='2003089420816'>
+
+    @pytest.mark.asyncio
+    async def test_memory_health(mock_gemini):
+        conn = get_connection()
+        conn.execute("INSERT INTO entities (name) VALUES ('E1'), ('E2')")
+        conn.commit()
+        conn.close()
+    
+        health = await get_memory_health_logic()
+        assert health["management_stats"]["entities_count"] == 2
+        assert "gaps_analysis" in health["management_stats"]
+>       assert health["components"]["api"]["status"] == "healthy"
+E       AssertionError: assert 'unhealthy' == 'healthy'
+E         
+E         - healthy
+E         + unhealthy
+E         ? ++
+
+tests\test_management.py:85: AssertionError
+_______________________ test_comprehensive_diagnostics ________________________
+
+mock_gemini = <MagicMock name='get_gemini_client()' id='2002512471504'>
+
+    @pytest.mark.asyncio
+    async def test_comprehensive_diagnostics(mock_gemini):
+        # Mock Gemini to be healthy
+        mock_gemini.models.list.return_value = [type('Model', (), {'name': 'models/gemini-pro'})]
+    
+        report = await get_comprehensive_diagnostics()
+>       assert report["status"] == "healthy"
+E       AssertionError: assert 'warning' == 'healthy'
+E         
+E         - healthy
+E         + warning
+
+tests\test_health_optimization.py:19: AssertionError
+________________________ test_logic_health_integration ________________________
+
+mock_gemini = <MagicMock name='get_gemini_client()' id='2003095687312'>
+
+    @pytest.mark.asyncio
+    async def test_logic_health_integration(mock_gemini):
+        mock_gemini.models.list.return_value = [type('Model', (), {'name': 'models/gemini-pro'})]
+    
+        health = await get_memory_health_core()
+        assert "management_stats" in health
+        assert "issues" in health
+>       assert health["status"] == "healthy"
+E       AssertionError: assert 'warning' == 'healthy'
+E         
+E         - healthy
+E         + warning
+
+tests\test_health_optimization.py:90: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_management.py::test_audit_and_rollback - TypeError: get_aud...
+FAILED tests/test_management.py::test_memory_health - AssertionError: assert ...
+FAILED tests/test_health_optimization.py::test_comprehensive_diagnostics - As...
+FAILED tests/test_health_optimization.py::test_logic_health_integration - Ass...
+========================= 4 failed, 7 passed in 2.17s =========================

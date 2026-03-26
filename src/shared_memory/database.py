@@ -2,13 +2,11 @@ import sqlite3
 import time
 import random
 
-try:
-    from .utils import get_db_path, log_error
-except (ImportError, ValueError):
-    from utils import get_db_path, log_error
+from shared_memory.utils import get_db_path, log_error
+from shared_memory.exceptions import DatabaseLockedError, DatabaseError
 
 
-def retry_on_db_lock(max_retries=5, initial_delay=0.1):
+def retry_on_db_lock(max_retries=15, initial_delay=0.1):
     def decorator(func):
         def wrapper(*args, **kwargs):
             retries = 0
@@ -19,10 +17,12 @@ def retry_on_db_lock(max_retries=5, initial_delay=0.1):
                     if "database is locked" in str(e).lower():
                         retries += 1
                         if retries == max_retries:
-                            raise
-                        delay = initial_delay * (2 ** (retries - 1)) + random.uniform(
-                            0, 0.1
-                        )
+                            raise DatabaseLockedError(
+                                f"Database remained locked after {max_retries} attempts."
+                            )
+                        delay = min(
+                            initial_delay * (2 ** (retries - 1)), 1.0
+                        ) + random.uniform(0, 0.1)
                         time.sleep(delay)
                     else:
                         raise
@@ -34,7 +34,8 @@ def retry_on_db_lock(max_retries=5, initial_delay=0.1):
 
 
 def get_connection():
-    conn = sqlite3.connect(get_db_path())
+    # Increase timeout to 30 seconds to handle heavy parallel writes (e.g. 100 agents)
+    conn = sqlite3.connect(get_db_path(), timeout=30.0)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
@@ -99,6 +100,15 @@ def init_db():
             FOREIGN KEY (entity_name) REFERENCES entities (name) ON DELETE CASCADE
         )
     """)
+    # Embedding Cache (Phase 11 Optimization)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS embedding_cache (
+            content_hash TEXT PRIMARY KEY,
+            vector BLOB,
+            model_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bank_files (
             filename TEXT PRIMARY KEY,
@@ -120,9 +130,8 @@ def init_db():
             content_id TEXT PRIMARY KEY,
             access_count INTEGER DEFAULT 0,
             last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,
-            importance_score REAL DEFAULT 1.0,
-            stability REAL DEFAULT 1.1,
-            FOREIGN KEY (content_id) REFERENCES entities (name) ON DELETE CASCADE
+            stability REAL DEFAULT 0.1,
+            importance_score REAL DEFAULT 0.1
         )
     """)
     cursor.execute("""
@@ -141,8 +150,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            description TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            db_path TEXT NOT NULL
+            file_path TEXT NOT NULL
         )
     """)
     # Conflicts table (New in Phase 13)
@@ -158,38 +168,53 @@ def init_db():
             resolved INTEGER DEFAULT 0
         )
     """)
-    # Migrations for Phase 11
-    _add_column_if_missing(
-        cursor, "entities", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-    )
-    _add_column_if_missing(
-        cursor, "entities", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-    )
+    # Troubleshooting Knowledge table (Decoupled Feature)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS troubleshooting_knowledge (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            solution TEXT NOT NULL,
+            affected_functions TEXT,
+            env_metadata TEXT,
+            access_count INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    _add_column_if_missing(cursor, "entities", "created_at DATETIME")
+    _add_column_if_missing(cursor, "entities", "updated_at DATETIME")
     _add_column_if_missing(cursor, "entities", "created_by TEXT")
     _add_column_if_missing(cursor, "entities", "updated_by TEXT")
     _add_column_if_missing(cursor, "entities", "importance INTEGER DEFAULT 5")
 
-    _add_column_if_missing(
-        cursor, "relations", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-    )
+    # Backfill if necessary (optional since we already have CURRENT_TIMESTAMP for new rows)
+    # cursor.execute("UPDATE entities SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
+
+    _add_column_if_missing(cursor, "relations", "created_at DATETIME")
     _add_column_if_missing(cursor, "relations", "created_by TEXT")
 
     _add_column_if_missing(cursor, "observations", "created_by TEXT")
 
     _add_column_if_missing(cursor, "bank_files", "updated_by TEXT")
+    _add_column_if_missing(cursor, "snapshots", "description TEXT")
+    _add_column_if_missing(cursor, "snapshots", "file_path TEXT")
+    _add_column_if_missing(cursor, "knowledge_metadata", "decay_rate REAL DEFAULT 0.01")
 
     conn.commit()
     conn.close()
 
 
 @retry_on_db_lock()
-def update_access(content_id: str):
-    conn = get_connection()
+async def update_access(content_id: str, conn=None):
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
     try:
         conn.execute(
             """
-            INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score, stability)
-            VALUES (?, 1, CURRENT_TIMESTAMP, 1.0, 1.1)
+            INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score, stability, decay_rate)
+            VALUES (?, 1, CURRENT_TIMESTAMP, 1.0, 1.1, 0.01)
             ON CONFLICT(content_id) DO UPDATE SET
                 access_count = access_count + 1,
                 last_accessed = CURRENT_TIMESTAMP,
@@ -200,5 +225,7 @@ def update_access(content_id: str):
         conn.commit()
     except Exception as e:
         log_error(f"Failed to update access for {content_id}", e)
+        raise DatabaseError(f"Failed to update access: {e}") from e
     finally:
-        conn.close()
+        if should_close:
+            conn.close()
