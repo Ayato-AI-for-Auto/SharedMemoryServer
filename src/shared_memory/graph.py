@@ -1,20 +1,21 @@
 import json
 from typing import Any
 
-from shared_memory.database import get_connection, update_access
-from shared_memory.embeddings import (
-    EMBEDDING_MODEL,
-    compute_embeddings_bulk,
-    get_gemini_client,
-)
-from shared_memory.utils import mask_sensitive_data
+from shared_memory.database import get_connection
+from shared_memory.embeddings import EMBEDDING_MODEL, compute_embeddings_bulk
+from shared_memory.utils import log_error, mask_sensitive_data
 
 
 async def check_conflict(entity_name: str, new_content: str, agent_id: str, conn=None):
     """
-    Internal helper to check if new content contradicts existing observations using LLM.
-    Returns (conflict_found: bool, reason: str)
+    Checks if a new observation contradicts existing knowledge using Gemini.
     """
+    from shared_memory.embeddings import get_gemini_client
+
+    client = get_gemini_client()
+    if not client:
+        return False, None
+
     should_close = False
     if conn is None:
         conn = get_connection()
@@ -26,6 +27,7 @@ async def check_conflict(entity_name: str, new_content: str, agent_id: str, conn
             "SELECT content FROM observations WHERE entity_name = ? ORDER BY timestamp DESC LIMIT 3",
             (entity_name,),
         ).fetchall()
+
         if not existing:
             return False, None
 
@@ -35,32 +37,27 @@ async def check_conflict(entity_name: str, new_content: str, agent_id: str, conn
             f"the EXISTING knowledge about '{entity_name}'.\n\n"
             f"EXISTING KNOWLEDGE:\n{existing_text}\n\n"
             f"NEW STATEMENT:\n{new_content}\n\n"
-            f"Is there a direct contradiction? Respond ONLY with a JSON object:\n"
-            f'{{"conflict": true/false, "reason": "explanation if true, else empty"}}'
+            'Output MUST be JSON: {"conflict": bool, "reason": "string"}'
         )
 
-        client = get_gemini_client()
-        if not client:
-            return False, None
-
         response = client.models.generate_content(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash",
             contents=prompt,
-        ).text
+            config={"response_mime_type": "application/json"},
+        )
 
-        # Parse JSON from response (handling potential markdown formatting)
-        clean_res = response.strip().replace("```json", "").replace("```", "")
-        data = json.loads(clean_res)
-
+        data = json.loads(response.text)
         if data.get("conflict"):
             # Log to DB
             conn.execute(
                 "INSERT INTO conflicts (entity_name, existing_content, new_content, reason, agent_id) VALUES (?, ?, ?, ?, ?)",
                 (entity_name, existing_text, new_content, data.get("reason"), agent_id),
             )
-            conn.commit()
             return True, data.get("reason")
 
+        return False, None
+    except Exception as e:
+        log_error("Conflict check failed", e)
         return False, None
     finally:
         if should_close:
@@ -118,9 +115,10 @@ async def save_entities(entities: list[dict[str, Any]], agent_id: str, conn):
 
         # Audit: Fetch old state
         old_row = conn.execute(
-            "SELECT name, entity_type, description FROM entities WHERE name = ?",
-            (name,),
+            "SELECT entity_type, description FROM entities WHERE name = ?", (name,)
         ).fetchone()
+        old_data = json.dumps(dict(old_row)) if old_row else None
+        action = "UPDATE" if old_row else "INSERT"
 
         # INSERT OR REPLACE
         conn.execute(
@@ -128,13 +126,7 @@ async def save_entities(entities: list[dict[str, Any]], agent_id: str, conn):
             (name, e_type, desc, importance, agent_id),
         )
 
-        # Record Audit
-        action = "UPDATE" if old_row else "INSERT"
-        old_data = (
-            json.dumps({"name": old_row[0], "type": old_row[1], "desc": old_row[2]})
-            if old_row
-            else None
-        )
+        # Log Audit
         new_data = json.dumps({"name": name, "type": e_type, "desc": desc})
         conn.execute(
             "INSERT INTO audit_logs (table_name, content_id, action, old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
@@ -183,6 +175,7 @@ async def save_relations(relations: list[dict[str, Any]], agent_id: str, conn):
 async def save_observations(observations: list[dict[str, Any]], agent_id: str, conn):
     conflicts_found = []
     errors = []
+    success_count = 0
     for o in observations:
         entity_name = o.get("entity_name", "").strip()
         content = o.get("content", "").strip()
@@ -217,7 +210,12 @@ async def save_observations(observations: list[dict[str, Any]], agent_id: str, c
                 agent_id,
             ),
         )
-    return f"Saved {len(observations)} observations", conflicts_found
+        success_count += 1
+
+    msg = f"Saved {success_count} observations"
+    if errors:
+        msg += f" (Errors: {len(errors)})"
+    return msg, conflicts_found
 
 
 async def get_graph_data(query: str | None = None):
@@ -225,51 +223,42 @@ async def get_graph_data(query: str | None = None):
     try:
         cursor = conn.cursor()
         if query:
-            q = f"%{query}%"
-            e_rows = cursor.execute(
-                "SELECT * FROM entities WHERE name LIKE ? OR description LIKE ?", (q, q)
-            ).fetchall()
-            o_rows = cursor.execute(
-                "SELECT * FROM observations WHERE content LIKE ?", (q,)
+            # Semantic search or simple like? For now, simple LIKE for name matching
+            cursor.execute(
+                "SELECT * FROM entities WHERE name LIKE ? OR description LIKE ?",
+                (f"%{query}%", f"%{query}%"),
+            )
+            matched_entities = cursor.fetchall()
+            matched_names = [e["name"] for e in matched_entities]
+
+            if not matched_names:
+                return {"entities": [], "relations": [], "observations": []}
+
+            # Fetch relations involving matched entities
+            placeholders = ",".join(["?"] * len(matched_names))
+            relations = cursor.execute(
+                f"SELECT * FROM relations WHERE source IN ({placeholders}) OR target IN ({placeholders})",
+                matched_names + matched_names,
             ).fetchall()
 
-            for row in e_rows:
-                await update_access(row[0], conn)
-
-            matched_names = [r[0] for r in e_rows]
-            relations = []
-            if matched_names:
-                placeholders = ",".join(["?"] * len(matched_names))
-                relations = cursor.execute(
-                    f"SELECT * FROM relations WHERE source IN ({placeholders}) OR target IN ({placeholders})",
-                    matched_names + matched_names,
-                ).fetchall()
+            observations = cursor.execute(
+                f"SELECT * FROM observations WHERE entity_name IN ({placeholders})",
+                matched_names,
+            ).fetchall()
 
             return {
-                "entities": [
-                    {"name": r[0], "type": r[1], "description": r[2]} for r in e_rows
-                ],
-                "relations": [
-                    {"source": r[0], "target": r[1], "type": r[2]} for r in relations
-                ],
-                "observations": [
-                    {"entity": o[1], "content": o[2], "at": o[3]} for o in o_rows
-                ],
+                "entities": [dict(e) for e in matched_entities],
+                "relations": [dict(r) for r in relations],
+                "observations": [dict(o) for o in observations],
             }
         else:
             entities = cursor.execute("SELECT * FROM entities").fetchall()
             relations = cursor.execute("SELECT * FROM relations").fetchall()
-            obs = cursor.execute("SELECT * FROM observations").fetchall()
+            observations = cursor.execute("SELECT * FROM observations").fetchall()
             return {
-                "entities": [
-                    {"name": e[0], "type": e[1], "description": e[2]} for e in entities
-                ],
-                "relations": [
-                    {"source": r[0], "target": r[1], "type": r[2]} for r in relations
-                ],
-                "observations": [
-                    {"entity": o[1], "content": o[2], "at": o[3]} for o in obs
-                ],
+                "entities": [dict(e) for e in entities],
+                "relations": [dict(r) for r in relations],
+                "observations": [dict(o) for o in observations],
             }
     finally:
         conn.close()

@@ -6,7 +6,9 @@ from shared_memory.embeddings import get_gemini_client
 from shared_memory.utils import log_error, log_info
 
 
-async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str, Any]]):
+async def auto_distill_knowledge(
+    session_id: str, thought_history: list[dict[str, Any]]
+):
     """
     Analyzes thought history using Gemini to extract structured knowledge.
     """

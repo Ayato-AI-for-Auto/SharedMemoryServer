@@ -64,7 +64,9 @@ def get_gemini_client() -> genai.Client | None:
             from dotenv import load_dotenv
 
             load_dotenv()
-            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get(
+                "GEMINI_API_KEY"
+            )
         except ImportError:
             # python-dotenv is an optional dependency
             pass

@@ -1,16 +1,17 @@
-import pytest
-from shared_memory import thought_logic
-from shared_memory.thought_logic import process_thought_core, get_thought_history
-
-
 import sqlite3
+
+import pytest
+
+from shared_memory import thought_logic
+from shared_memory.thought_logic import get_thought_history, process_thought_core
 from shared_memory.utils import get_thoughts_db_path
+
 
 @pytest.fixture(autouse=True)
 def init_hardened_db(mock_env):
     """Initializes the thoughts database and clears history for isolation."""
     thought_logic.init_thoughts_db()
-    
+
     # Clear history to ensure test isolation
     conn = sqlite3.connect(get_thoughts_db_path())
     conn.execute("DELETE FROM thought_history")
@@ -26,19 +27,19 @@ async def test_sensitive_data_masking_in_thoughts():
     """
     secret_key = "sk-ant-api03-1234567890abcdef1234567890abcdef-12345"
     thought_content = f"I am using the API key {secret_key} to perform a task."
-    
+
     await process_thought_core(
         thought=thought_content,
         thought_number=1,
         total_thoughts=1,
         next_thought_needed=False,
-        session_id="security_session"
+        session_id="security_session",
     )
-    
+
     # Retrieve from DB and verify masking
     history = await get_thought_history("security_session")
     saved_thought = history[0]["thought"]
-    
+
     assert secret_key not in saved_thought
     assert "[API_KEY_MASKED]" in saved_thought
 
@@ -54,10 +55,10 @@ async def test_invalid_revision_validation():
         total_thoughts=2,
         next_thought_needed=False,
         is_revision=True,
-        revises_thought=99, # Non-existent
-        session_id="validation_session"
+        revises_thought=99,  # Non-existent
+        session_id="validation_session",
     )
-    
+
     assert "error" in result
     assert "Invalid revision" in result["error"]
     assert "Thought #99 does not exist" in result["error"]
@@ -75,9 +76,9 @@ async def test_performance_with_indices(benchmark=None):
             thought_number=i,
             total_thoughts=10,
             next_thought_needed=(i < 10),
-            session_id="perf_session"
+            session_id="perf_session",
         )
-    
+
     history = await get_thought_history("perf_session")
     assert len(history) == 10
     assert history[9]["thought_number"] == 10

@@ -1,7 +1,14 @@
-import pytest
 import json
-from shared_memory.logic import read_memory_core as perform_search, synthesize_entity as synthesize_knowledge
+
+import pytest
+
 from shared_memory.database import get_connection, init_db
+from shared_memory.logic import (
+    read_memory_core as perform_search,
+)
+from shared_memory.logic import (
+    synthesize_entity as synthesize_knowledge,
+)
 
 
 @pytest.fixture(autouse=True)

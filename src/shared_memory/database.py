@@ -19,7 +19,7 @@ def retry_on_db_lock(max_retries=15, initial_delay=0.1):
                         if retries == max_retries:
                             raise DatabaseLockedError(
                                 f"Database remained locked after {max_retries} attempts."
-                            )
+                            ) from e
                         delay = min(
                             initial_delay * (2 ** (retries - 1)), 1.0
                         ) + random.uniform(0, 0.1)

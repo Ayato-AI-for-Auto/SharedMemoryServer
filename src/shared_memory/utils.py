@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import json
 import math
 import os
@@ -93,14 +92,12 @@ class PathResolver:
         gitignore_path = os.path.join(root_dir, ".gitignore")
         if os.path.exists(gitignore_path):
             try:
-                with open(gitignore_path, "r", encoding="utf-8") as f:
+                with open(gitignore_path, encoding="utf-8") as f:
                     content = f.read()
                 if ".shared_memory/" not in content:
                     # Append with a clear comment
                     with open(gitignore_path, "a", encoding="utf-8") as f:
-                        f.write(
-                            "\n# SharedMemoryServer local data\n.shared_memory/\n"
-                        )
+                        f.write("\n# SharedMemoryServer local data\n.shared_memory/\n")
                     log_info(f"Automatically added .shared_memory/ to {gitignore_path}")
             except Exception as e:
                 log_error(f"Failed to update {gitignore_path}", e)

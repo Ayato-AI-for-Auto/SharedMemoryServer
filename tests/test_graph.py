@@ -1,6 +1,7 @@
 import pytest
-from shared_memory.graph import save_entities, save_relations, save_observations
-from shared_memory.database import get_connection, update_access, init_db
+
+from shared_memory.database import get_connection, init_db, update_access
+from shared_memory.graph import save_entities, save_observations, save_relations
 
 
 @pytest.fixture(autouse=True)

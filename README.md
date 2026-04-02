@@ -2,20 +2,27 @@
 
 This MCP server provides a unified memory layer for AI agents, combining structured knowledge and project-specific context.
 
-## Unified Memory API (V2)
+## Unified Memory API (v3)
 
-The server now features a consolidated 3-tool API for maximum simplicity and efficiency:
+The tools are now categorized into **Agent Core** (for daily reasoning and memory access) and **Admin Maintenance** (for auditing and recovery).
 
-### 1. `save_memory`
-**The Entrance for Writing**. Updates both Knowledge Graph (SQLite) and Memory Bank (Markdown) in one call.
-- Handles entities, relations, observations, and file updates simultaneously.
+### 🤖 Core Agent Tools
+These are the primary tools intended for AI agents to use during task execution.
 
-### 2. `read_memory`
-**The Entrance for Reading**. Unified search and retrieval across both Graph and Bank.
-- Performs hybrid retrieval based on an optional keyword query and scope.
+- **`read_memory`**: Unified search and retrieval across both Graph and Bank.
+- **`save_memory`**: Atomic update for Knowledge Graph and Memory Bank.
+- **`synthesize_entity`**: Aggregates distributed information into a coherent summary.
+- **`sequential_thinking`**: Orchestrates deep reasoning and multi-step thought processes.
 
-### 3. `delete_memory`
-**The Entrance for Deletion**. Targeted removal of specific entities and their related context.
+### 🛡️ Administrative CLI
+Maintenance is now handled via a dedicated CLI tool to prevent accidental misuse by agents.
+
+- **`shared-memory-admin history`**: View the change log for auditing.
+- **`shared-memory-admin rollback <id>`**: Revert specific changes using audit IDs.
+- **`shared-memory-admin snapshot`**: Create, restore, and list snapshots.
+- **`shared-memory-admin health`**: Diagnose knowledge gaps and biases.
+- **`shared-memory-admin repair`**: Reconstruct workspace files from the database.
+- **`shared-memory-admin recover-thoughts`**: Manually trigger thought recovery.
 
 ## Environment Variables
 - `MEMORY_DB_PATH`: Path to the SQLite database (default: `shared_memory.db`).

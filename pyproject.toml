@@ -17,11 +17,17 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "ragas>=0.1.0",
+    "pandas",
+    "datasets",
+    "langchain-google-genai",
 ]
 
 [project.scripts]
 shared-memory = "shared_memory.server:main"
-shared-memory-register = "shared_memory.cli.register:main"
+shared-memory-register = "shared_memory.register:main"
+shared-memory-unregister = "shared_memory.unregister:main"
+shared-memory-admin = "shared_memory.admin_cli:main"
 
 [tool.ruff]
 line-length = 88

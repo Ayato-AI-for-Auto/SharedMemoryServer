@@ -1,9 +1,11 @@
-import pytest
 import os
+
 import aiofiles
-from shared_memory.logic import repair_memory_core as repair_memory_logic
-from shared_memory.bank import read_bank_data, save_bank_files, initialize_bank
+import pytest
+
+from shared_memory.bank import initialize_bank, read_bank_data, save_bank_files
 from shared_memory.database import get_connection, init_db
+from shared_memory.logic import repair_memory_core as repair_memory_logic
 from shared_memory.utils import get_bank_dir
 
 
@@ -40,7 +42,7 @@ async def test_save_bank_files(mock_gemini):
         # Verify on disk
         path = os.path.join(get_bank_dir(), "test.md")
         assert os.path.exists(path)
-        async with aiofiles.open(path, mode="r", encoding="utf-8") as f:
+        async with aiofiles.open(path, encoding="utf-8") as f:
             content = await f.read()
             assert content == "# Test Content"
     finally:
@@ -55,7 +57,7 @@ async def test_read_bank_data(mock_gemini):
         await save_bank_files({"read_me.md": "Special content"}, "test_agent", conn)
         conn.commit()
         conn.close()
-        conn = None # Mark as closed for finally block
+        conn = None  # Mark as closed for finally block
 
         data = await read_bank_data(query="Special")
         assert "read_me.md" in data

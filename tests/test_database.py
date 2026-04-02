@@ -1,6 +1,8 @@
 import sqlite3
+
 import pytest
-from shared_memory.database import init_db, get_connection, update_access
+
+from shared_memory.database import get_connection, init_db, update_access
 
 
 def test_init_db_creates_tables(temp_db):

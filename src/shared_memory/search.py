@@ -1,5 +1,7 @@
 import datetime
 import json
+import re
+import sqlite3
 
 from shared_memory.bank import read_bank_data
 from shared_memory.database import get_connection
@@ -9,7 +11,96 @@ from shared_memory.embeddings import (
     get_gemini_client,
 )
 from shared_memory.graph import get_graph_data
-from shared_memory.utils import batch_cosine_similarity, calculate_importance, log_error
+from shared_memory.utils import (
+    batch_cosine_similarity,
+    calculate_importance,
+    get_thoughts_db_path,
+    log_error,
+)
+
+
+def get_thoughts_connection():
+    return sqlite3.connect(get_thoughts_db_path())
+
+
+async def perform_keyword_search(
+    query: str, limit: int = 5, exclude_session_id: str = None
+):
+    """
+    Improved Keyword Search Logic:
+    - Exact matches in ID/Name: 10.0
+    - Partial matches in ID/Name: 5.0
+    - Keyword frequency in content: 1.5 per occurrence
+    """
+    conn = get_connection()
+    query_words = re.findall(r"\w+", query.lower())
+    if not query_words:
+        return []
+
+    scored_results = {}
+
+    # 1. Search Knowledge DB (Entities, Observations, Bank)
+    data_sources = [
+        ("entities", "name", "description"),
+        ("observations", "entity_name", "content"),
+        ("bank_files", "filename", "content"),
+    ]
+
+    for table, id_col, content_col in data_sources:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT {id_col}, {content_col} FROM {table}")
+        for row_id, content in cursor.fetchall():
+            content_lower = str(content).lower()
+            row_id_lower = str(row_id).lower()
+            score = 0.0
+
+            if query.lower() == row_id_lower:
+                score += 10.0
+            elif query.lower() in row_id_lower:
+                score += 5.0
+
+            for word in query_words:
+                if word in content_lower:
+                    score += content_lower.count(word) * 1.5
+
+            if score > 0:
+                scored_results[(table, row_id)] = (
+                    scored_results.get((table, row_id), 0.0) + score
+                )
+
+    # 2. Search Thoughts DB
+    t_conn = get_thoughts_connection()
+    t_cursor = t_conn.cursor()
+    t_cursor.execute(
+        "SELECT session_id, thought_number, thought FROM thought_history WHERE session_id != ?",
+        (exclude_session_id or "",),
+    )
+    for sess_id, t_num, thought in t_cursor.fetchall():
+        thought_lower = str(thought).lower()
+        score = 0.0
+        for word in query_words:
+            if word in thought_lower:
+                score += (
+                    thought_lower.count(word) * 1.0
+                )  # Thoughts score slightly lower weight
+
+        if score > 0:
+            key = ("thought_history", f"{sess_id}#{t_num}")
+            scored_results[key] = scored_results.get(key, 0.0) + score
+
+    t_conn.close()
+    conn.close()
+
+    # Sort and format
+    sorted_items = sorted(scored_results.items(), key=lambda x: x[1], reverse=True)
+
+    formatted_results = []
+    for (source, row_id), score in sorted_items[:limit]:
+        formatted_results.append(
+            {"source": source, "id": row_id, "score": round(score, 2)}
+        )
+
+    return formatted_results
 
 
 async def perform_search(query: str, limit: int = 10):

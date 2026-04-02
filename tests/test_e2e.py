@@ -1,13 +1,15 @@
 import pytest
-from shared_memory.server import (
-    save_memory,
-    read_memory,
-    get_audit_history,
-    synthesize_entity,
-    create_snapshot,
-    repair_memory,
-)
+
 from shared_memory.database import init_db
+from shared_memory.server import (
+    admin_create_snapshot,
+    admin_get_audit_history,
+    admin_repair_memory,
+    read_memory,
+    save_memory,
+    sequential_thinking,
+    synthesize_entity,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +43,7 @@ async def test_full_save_read_flow(mock_gemini):
     assert "omega_manual.md" in data["bank"]
 
     # 3. Audit History
-    history = await get_audit_history(limit=5)
+    history = await admin_get_audit_history(limit=5)
     assert len(history) >= 4  # Entity, Relation, Obs, BankFile
 
     # 4. Synthesis
@@ -49,9 +51,34 @@ async def test_full_save_read_flow(mock_gemini):
     assert "conflict" in synth or "Project Omega" in synth
 
     # 5. Snapshot
-    snap_res = await create_snapshot("Final State")
+    snap_res = await admin_create_snapshot("Final State")
     assert "Snapshot 'Final State' created" in snap_res
 
     # 6. Repair
-    repair_res = await repair_memory()
+    repair_res = await admin_repair_memory()
     assert "Restored" in repair_res
+
+    # 7. Sequential Thinking & Distillation
+    # Thought 1
+    await sequential_thinking(
+        thought="I need to record that the project budget is $1M.",
+        thought_number=1,
+        total_thoughts=2,
+        next_thought_needed=True,
+        session_id="test_session",
+    )
+    # Thought 2 (Finish & Trigger Distillation)
+    await sequential_thinking(
+        thought="The budget is specifically for personnel costs.",
+        thought_number=2,
+        total_thoughts=2,
+        next_thought_needed=False,
+        session_id="test_session",
+    )
+
+    # Check if knowledge was distilled into the graph
+    # (Since LLM is mocked, we expect some interaction or at least no crash)
+    data = await read_memory(query="budget")
+    # Even if mock doesn't return exactly "budget", we check synthesis
+    synth_result = await synthesize_entity("Project Omega")
+    assert synth_result is not None

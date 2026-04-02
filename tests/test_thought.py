@@ -1,12 +1,13 @@
 import os
-import pytest
 import sqlite3
+
+import pytest
+
 from shared_memory.thought_logic import (
+    get_thought_history,
     init_thoughts_db,
     process_thought_core,
-    get_thought_history,
 )
-from shared_memory.utils import get_thoughts_db_path
 
 
 @pytest.fixture
@@ -112,7 +113,7 @@ async def test_process_thought_with_branch(temp_thoughts_db):
     )
 
     assert "branch_A" in result["branches"]
-    
+
     history = await get_thought_history("branch_session")
     assert history[0]["branch_id"] == "branch_A"
     assert history[0]["branch_from_thought"] == 1

@@ -1,15 +1,32 @@
+import asyncio
+import os
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any
 
 from shared_memory.database import retry_on_db_lock
 from shared_memory.exceptions import DatabaseError
-from shared_memory.utils import get_thoughts_db_path, log_error, mask_sensitive_data
+from shared_memory.search import perform_keyword_search
+from shared_memory.utils import (
+    get_thoughts_db_path,
+    log_error,
+    log_info,
+    mask_sensitive_data,
+)
+
+# Throttling for background recovery
+LAST_RECOVERY_TIME = datetime.min
+RECOVERY_COOLDOWN = timedelta(minutes=10)
 
 
 @retry_on_db_lock()
 def init_thoughts_db():
     """Initializes the separate thoughts database with optimized indices."""
-    conn = sqlite3.connect(get_thoughts_db_path())
+    db_path = get_thoughts_db_path()
+    # Ensure parent directory exists (e.g. .shared_memory/)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS thought_history (
@@ -23,9 +40,19 @@ def init_thoughts_db():
             revises_thought INTEGER,
             branch_from_thought INTEGER,
             branch_id TEXT,
+            distilled BOOLEAN DEFAULT 0,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Migration for existing databases
+    try:
+        cursor.execute(
+            "ALTER TABLE thought_history ADD COLUMN distilled BOOLEAN DEFAULT 0"
+        )
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
     # Indices for performance and efficient sequence lookups
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_thought_session ON thought_history (session_id)"
@@ -62,6 +89,9 @@ async def process_thought_core(
     Implements the core logic for sequential thinking with security, validation, and persistence.
     """
     try:
+        # Lazy initialization for project-based isolation
+        init_thoughts_db()
+
         # 1. Security: Mask sensitive data in the thought content
         masked_thought = mask_sensitive_data(thought)
 
@@ -117,15 +147,30 @@ async def process_thought_core(
         )
         branches = [r[0] for r in cursor.fetchall()]
 
-        conn.close()
-
         # 5. Distillation: If session is complete, trigger knowledge extraction
         if not next_thought_needed:
             # We import here to avoid circular dependencies
             from shared_memory.distiller import auto_distill_knowledge
+
             history = await get_thought_history(session_id)
             # Sync wait for validation phase
             await auto_distill_knowledge(session_id, history)
+            # Mark as distilled
+            cursor.execute(
+                "UPDATE thought_history SET distilled = 1 WHERE session_id = ?",
+                (session_id,),
+            )
+            conn.commit()
+
+        # 6. Knowledge Injection: Find relevant past memories/thoughts
+        related_knowledge = await perform_keyword_search(
+            thought, limit=3, exclude_session_id=session_id
+        )
+
+        conn.close()
+
+        # 7. Opportunistic Recovery: Detached task to clean up old sessions
+        asyncio.create_task(trigger_opportunistic_recovery())
 
         return {
             "thoughtNumber": thought_number,
@@ -133,6 +178,7 @@ async def process_thought_core(
             "nextThoughtNeeded": next_thought_needed,
             "branches": branches,
             "thoughtHistoryLength": history_length,
+            "related_knowledge": related_knowledge,
         }
 
     except Exception as e:
@@ -158,3 +204,63 @@ async def get_thought_history(
     except Exception as e:
         log_error(f"Failed to retrieve history for session {session_id}", e)
         return []
+
+
+async def trigger_opportunistic_recovery():
+    """Triggers recovery if the cooldown has passed."""
+    global LAST_RECOVERY_TIME
+    now = datetime.now()
+    if now - LAST_RECOVERY_TIME > RECOVERY_COOLDOWN:
+        LAST_RECOVERY_TIME = now
+        await recover_undistilled_sessions()
+
+
+async def recover_undistilled_sessions():
+    """
+    Finds and processes sessions that were never distilled.
+    1. Ended sessions (next_thought_needed=0) but not marked as distilled.
+    2. Stale sessions (abandoned sessions).
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Find session IDs that need recovery
+        # Case 1: Session explicitly ended but never distilled
+        cursor.execute("""
+            SELECT DISTINCT session_id FROM thought_history 
+            WHERE distilled = 0 AND next_thought_needed = 0
+        """)
+        sessions_to_recover = [row[0] for row in cursor.fetchall()]
+
+        # Case 2: Stale sessions (Inactive for > 30 mins, never distilled)
+        cursor.execute("""
+            SELECT DISTINCT session_id FROM thought_history 
+            WHERE distilled = 0 
+            GROUP BY session_id 
+            HAVING MAX(timestamp) < datetime('now', '-30 minutes')
+        """)
+        stale_sessions = [row[0] for row in cursor.fetchall()]
+
+        all_to_process = list(set(sessions_to_recover + stale_sessions))
+
+        if not all_to_process:
+            conn.close()
+            return
+
+        log_info(f"Found {len(all_to_process)} undistilled sessions to recover.")
+        from shared_memory.distiller import auto_distill_knowledge
+
+        for sess_id in all_to_process:
+            history = await get_thought_history(sess_id)
+            if history:
+                await auto_distill_knowledge(sess_id, history)
+                cursor.execute(
+                    "UPDATE thought_history SET distilled = 1 WHERE session_id = ?",
+                    (sess_id,),
+                )
+                conn.commit()
+
+        conn.close()
+    except Exception as e:
+        log_error("Failed during opportunistic thought recovery", e)

@@ -2,7 +2,7 @@ import json
 import sqlite3
 from typing import Any
 
-from shared_memory import bank, graph, health, management, search, troubleshooting
+from shared_memory import bank, graph, health, management, search
 from shared_memory.database import get_connection
 from shared_memory.exceptions import DatabaseError, SharedMemoryError
 from shared_memory.utils import log_error
@@ -87,16 +87,6 @@ async def create_snapshot_core(name: str, description: str):
 
 async def restore_snapshot_core(snapshot_id: int):
     return await management.restore_snapshot_logic(snapshot_id)
-
-
-async def troubleshooting_record_core(problem, solution, env, tags):
-    return await troubleshooting.save_troubleshooting_record(
-        problem, solution, env, tags
-    )
-
-
-async def troubleshooting_search_core(query):
-    return await troubleshooting.search_troubleshooting_history(query)
 
 
 async def get_memory_health_core():

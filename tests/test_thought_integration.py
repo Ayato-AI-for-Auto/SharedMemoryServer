@@ -1,6 +1,7 @@
+
 import pytest
-import os
-from shared_memory import server, thought_logic, database
+
+from shared_memory import database, server, thought_logic
 from shared_memory.thought_logic import get_thought_history
 
 
@@ -54,7 +55,13 @@ async def test_thought_and_memory_coexistence():
     # 2. Save memory (using existing stable logic)
     # We use logic.save_memory_core directly or via server tool
     await server.save_memory(
-        entities=[{"name": "CoexistEntity", "entity_type": "Test", "description": "Testing coexistence"}]
+        entities=[
+            {
+                "name": "CoexistEntity",
+                "entity_type": "Test",
+                "description": "Testing coexistence",
+            }
+        ]
     )
 
     # 3. Finish thinking
@@ -69,7 +76,7 @@ async def test_thought_and_memory_coexistence():
     # 4. Verify both exist
     history = await get_thought_history("coexist_session")
     assert len(history) == 2
-    
+
     # Check graph memory
     graph_data = await server.get_graph_data(query="CoexistEntity")
     assert any(e["name"] == "CoexistEntity" for e in graph_data["entities"])

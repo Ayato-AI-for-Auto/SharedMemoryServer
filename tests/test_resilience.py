@@ -1,8 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from shared_memory.logic import save_memory_core
-from shared_memory.exceptions import SharedMemoryError, DatabaseLockedError
+
 from shared_memory.database import get_connection, init_db
+from shared_memory.exceptions import DatabaseLockedError, SharedMemoryError
+from shared_memory.logic import save_memory_core
 
 
 @pytest.fixture(autouse=True)
@@ -69,8 +71,9 @@ async def test_db_lock_retry_simulation(mock_gemini):
     """
     Verify that the retry_on_db_lock decorator logic is triggered.
     """
-    from shared_memory.database import retry_on_db_lock
     import sqlite3
+
+    from shared_memory.database import retry_on_db_lock
 
     mock_op = MagicMock()
     # Fail 2 times then succeed
@@ -88,13 +91,15 @@ async def test_db_lock_retry_simulation(mock_gemini):
     assert res == "Success"
     assert mock_op.call_count == 3
 
+
 @pytest.mark.asyncio
 async def test_db_lock_failure_raises_custom_exception(mock_gemini):
     """
     Verify that if retries are exhausted, DatabaseLockedError is raised.
     """
-    from shared_memory.database import retry_on_db_lock
     import sqlite3
+
+    from shared_memory.database import retry_on_db_lock
 
     mock_op = MagicMock()
     mock_op.side_effect = sqlite3.OperationalError("database is locked")
