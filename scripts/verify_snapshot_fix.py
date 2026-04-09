@@ -1,12 +1,12 @@
-import sys
 import os
+import sys
 
 # Add src to path
 sys.path.append(os.path.abspath("src"))
 
 try:
-    from shared_memory.server import create_snapshot
     from shared_memory.database import init_db
+    from shared_memory.server import create_snapshot
 
     # Initialize DB first
     init_db()

@@ -10,12 +10,15 @@ async def run_history(args):
         print("No audit history found.")
         return
     print(
-        f"{'ID':<5} | {'Timestamp':<20} | {'Action':<10} | {'Table':<15} | {'Agent':<15}"
+        f"{'ID':<5} | {'Timestamp':<20} | {'Action':<10} | "
+        f"{'Table':<15} | {'Agent':<15}"
     )
     print("-" * 75)
     for entry in history:
         print(
-            f"{entry['id']:<5} | {entry['timestamp']:<20} | {entry['action']:<10} | {entry['table']:<15} | {entry['agent']:<15}"
+            f"{entry['id']:<5} | {entry['timestamp']:<20} | "
+            f"{entry['action']:<10} | {entry['table']:<15} | "
+            f"{entry['agent']:<15}"
         )
 
 

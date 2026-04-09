@@ -18,7 +18,8 @@ async def auto_distill_knowledge(
     client = get_gemini_client()
     if not client:
         log_info(
-            f"Cannot distill knowledge for session {session_id}: Gemini client not initialized (API key missing)"
+            f"Cannot distill knowledge for session {session_id}: "
+            "Gemini client not initialized (API key missing)"
         )
         return
 
@@ -28,26 +29,35 @@ async def auto_distill_knowledge(
     )
 
     prompt = f"""
-    Analyze the following thinking process and extract key facts, entities, and relations 
-    that should be stored in a long-term knowledge graph.
-    
+    Analyze the following thinking process and extract key facts, entities,
+    and relations that should be stored in a long-term knowledge graph.
+
     GUIDELINES:
     - Identify important entities (concepts, people, tools, etc.)
     - Identify relations between these entities.
     - Identify specific observations or facts mentioned.
     - "Simple is best": Focus on high-quality, definite information.
     - Output MUST be valid JSON matching the schema below.
-    
+
     THINKING PROCESS:
     {formatted_thoughts}
-    
+
     JSON SCHEMA:
     {{
       "entities": [
-        {{"name": "Entity Name", "entity_type": "type", "description": "brief description"}}
+        {{
+          "name": "Entity Name",
+          "entity_type": "type",
+          "description": "brief description"
+        }}
       ],
       "relations": [
-        {{"source": "Source Name", "target": "Target Name", "relation_type": "type", "justification": "why?"}}
+        {{
+          "source": "Source Name",
+          "target": "Target Name",
+          "relation_type": "type",
+          "justification": "why?"
+        }}
       ],
       "observations": [
         {{"entity_name": "Entity Name", "content": "The fact observed"}}
@@ -61,7 +71,8 @@ async def auto_distill_knowledge(
             available_models = [m.name for m in client.models.list()]
         except Exception as e:
             log_error(
-                f"Failed to list models for session {session_id} (possibly invalid API key)",
+                f"Failed to list models for session {session_id} "
+                "(possibly invalid API key)",
                 e,
             )
             return
@@ -115,7 +126,8 @@ async def auto_distill_knowledge(
             agent_id="default_agent",
         )
         log_info(
-            f"Successfully distilled knowledge from session {session_id}: {len(entities)} entities, {len(relations)} relations"
+            f"Successfully distilled knowledge from session {session_id}: "
+            f"{len(entities)} entities, {len(relations)} relations"
         )
 
     except Exception as e:

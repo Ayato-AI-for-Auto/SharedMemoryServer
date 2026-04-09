@@ -87,7 +87,8 @@ class PathResolver:
     @staticmethod
     def ensure_gitignore(root_dir: str):
         """
-        Safely adds .shared_memory/ to .gitignore if it exists and doesn't already have it.
+        Safely adds .shared_memory/ to .gitignore if it exists and doesn't
+        already have it.
         """
         gitignore_path = os.path.join(root_dir, ".gitignore")
         if os.path.exists(gitignore_path):
@@ -206,7 +207,8 @@ def mask_sensitive_data(text: str) -> str:
         (r"sk-[a-zA-Z0-9\-]{20,}", "[API_KEY_MASKED]"),
         (r"(password\s*[:=]\s*)([^\s]+)", r"\1[PASSWORD_MASKED]"),
         (
-            r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----",
+            r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?"
+            r"-----END [A-Z ]+ PRIVATE KEY-----",
             "[PRIVATE_KEY_MASKED]",
         ),
     ]
@@ -280,7 +282,7 @@ class GlobalLock:
         if self.lock_name not in self._locks:
             self._locks[self.lock_name] = asyncio.Lock()
         self.intra_lock = self._locks[self.lock_name]
-        
+
         # We wait for the intra-process lock indefinitely since it's in-memory and fast
         await self.intra_lock.acquire()
 
@@ -347,7 +349,7 @@ def batch_cosine_similarity(
 
     similarities = []
     for v in vectors:
-        dot_product = sum(a * b for a, b in zip(query_vector, v))
+        dot_product = sum(a * b for a, b in zip(query_vector, v, strict=False))
         v_mag = math.sqrt(sum(x * x for x in v))
         if v_mag == 0:
             similarities.append(0.0)
@@ -362,7 +364,7 @@ def cosine_similarity(v1: list[float], v2: list[float]) -> float:
     """
     if not v1 or not v2:
         return 0.0
-    dot_product = sum(a * b for a, b in zip(v1, v2))
+    dot_product = sum(a * b for a, b in zip(v1, v2, strict=False))
     mag1 = math.sqrt(sum(a * a for a in v1))
     mag2 = math.sqrt(sum(b * b for b in v2))
     if mag1 == 0 or mag2 == 0:

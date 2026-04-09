@@ -27,7 +27,8 @@ async def test_knowledge_injection():
 
         # Insert Entity
         cursor.execute(
-            "INSERT INTO entities (name, entity_type, description, importance) VALUES (?, ?, ?, ?)",
+            "INSERT INTO entities (name, entity_type, description, importance) "
+            "VALUES (?, ?, ?, ?)",
             (
                 "SQLite",
                 "Database",
@@ -38,7 +39,8 @@ async def test_knowledge_injection():
 
         # Insert Observation
         cursor.execute(
-            "INSERT INTO observations (entity_name, content, created_by) VALUES (?, ?, ?)",
+            "INSERT INTO observations (entity_name, content, created_by) "
+            "VALUES (?, ?, ?)",
             (
                 "SQLite",
                 "The SharedMemoryServer utilizes SQLite WAL mode for high concurrency.",
@@ -58,7 +60,10 @@ async def test_knowledge_injection():
 
         t_cursor.execute(
             """
-            INSERT INTO thought_history (session_id, thought_number, total_thoughts, thought, next_thought_needed)
+            INSERT INTO thought_history (
+                session_id, thought_number, total_thoughts,
+                thought, next_thought_needed
+            )
             VALUES (?, ?, ?, ?, ?)
         """,
             (

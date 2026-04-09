@@ -1,9 +1,10 @@
 import os
 import shutil
-import aiosqlite
 import time
 from datetime import UTC
 from typing import Any
+
+import aiosqlite
 
 from shared_memory.database import async_get_connection
 from shared_memory.utils import get_bank_dir, get_db_path, log_error

@@ -53,7 +53,8 @@ def setup_mock_db():
     bank_files = [
         (
             "server.py",
-            "mcp = FastMCP('SharedMemoryServer'). Logic handles save_memory and read_memory.",
+            "mcp = FastMCP('SharedMemoryServer'). "
+            "Logic handles save_memory and read_memory.",
         ),
         ("database.py", "sqlite3 connection logic with retry_on_db_lock decorator."),
     ]

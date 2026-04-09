@@ -1,11 +1,13 @@
 import asyncio
 import os
+
 from shared_memory import thought_logic
+
 
 async def diag():
     print(f"CWD: {os.getcwd()}")
     print(f"Thoughts DB Path: {thought_logic.get_thoughts_db_path()}")
-    
+
     # Try to process a thought
     try:
         result = await thought_logic.process_thought_core(

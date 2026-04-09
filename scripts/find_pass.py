@@ -9,7 +9,7 @@ def find_swallowed_errors(directory):
         for file in files:
             if file.endswith(".py"):
                 path = os.path.join(root, file)
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     content = f.read()
                     if pattern.search(content):
                         print(f"FOUND in {path}")

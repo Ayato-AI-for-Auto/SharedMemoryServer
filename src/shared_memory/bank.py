@@ -43,7 +43,12 @@ async def initialize_bank():
             log_error(f"Initialization skipped for invalid filename: {filename}", e)
 
 
-async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, precomputed_vectors: list[list[float]] | None = None):
+async def save_bank_files(
+    bank_files: dict[str, str],
+    agent_id: str,
+    conn,
+    precomputed_vectors: list[list[float]] | None = None
+):
     """
     Saves bank files to disk and DB.
     Optimized to wrap file operations in a single lock session.
@@ -51,7 +56,7 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
     cursor = await conn.execute("SELECT name FROM entities")
     existing_entities = [r[0] for r in await cursor.fetchall()]
     bank_dir = get_bank_dir()
-    
+
     items_to_process = []
     for filename, content in bank_files.items():
         try:
@@ -64,7 +69,10 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
                     "sanitized_filename": sanitized_filename,
                     "path": path,
                     "content": masked_content,
-                    "embedding_text": f"File: {sanitized_filename}\nContent: {masked_content}",
+                    "embedding_text": (
+                        f"File: {sanitized_filename}\n"
+                        f"Content: {masked_content}"
+                    ),
                 }
             )
         except ValueError as e:
@@ -94,14 +102,20 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
                 "SELECT content FROM bank_files WHERE filename = ?", (filename,)
             )
             old_content_row = await cursor.fetchone()
-            old_data = json.dumps({"content": old_content_row[0]}) if old_content_row else None
+            old_data = (
+                json.dumps({"content": old_content_row[0]})
+                if old_content_row
+                else None
+            )
 
             await conn.execute(
-                "INSERT OR REPLACE INTO bank_files (filename, content, updated_by) VALUES (?, ?, ?)",
+                "INSERT OR REPLACE INTO bank_files "
+                "(filename, content, updated_by) VALUES (?, ?, ?)",
                 (filename, content, agent_id),
             )
             await conn.execute(
-                "INSERT INTO audit_logs (table_name, content_id, action, old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO audit_logs (table_name, content_id, action, "
+                "old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     "bank_files",
                     filename,
@@ -115,7 +129,8 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
             # 2. Vector Sync
             if vector:
                 await conn.execute(
-                    "INSERT OR REPLACE INTO embeddings (content_id, vector, model_name) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO embeddings "
+                    "(content_id, vector, model_name) VALUES (?, ?, ?)",
                     (filename, json.dumps(vector).encode("utf-8"), EMBEDDING_MODEL),
                 )
 
@@ -127,7 +142,9 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
             for entity_name in existing_entities:
                 if entity_name.lower() in content.lower():
                     await conn.execute(
-                        "INSERT OR REPLACE INTO relations (source, target, relation_type, created_by) VALUES (?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO relations "
+                        "(source, target, relation_type, created_by) "
+                        "VALUES (?, ?, ?, ?)",
                         (filename, entity_name, "mentions", agent_id),
                     )
 

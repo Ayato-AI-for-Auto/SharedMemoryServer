@@ -19,7 +19,7 @@ async def lifespan(mcp_instance: FastMCP):
     """
     await init_db()
     await thought_logic.init_thoughts_db()
-    
+
     yield
 
 

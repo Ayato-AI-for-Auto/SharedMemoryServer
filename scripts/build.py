@@ -1,7 +1,7 @@
-import subprocess
-import sys
 import os
 import shutil
+import subprocess
+import sys
 
 
 def run_command(cmd):

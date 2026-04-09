@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-import aiosqlite
 
 from google import genai
 
@@ -20,7 +19,8 @@ def _get_text_hash(text: str) -> str:
 async def _get_cached_embedding(text_hash: str) -> list[float] | None:
     async with await async_get_connection() as conn:
         cursor = await conn.execute(
-            "SELECT vector FROM embedding_cache WHERE content_hash = ? AND model_name = ?",
+            "SELECT vector FROM embedding_cache WHERE "
+            "content_hash = ? AND model_name = ?",
             (text_hash, EMBEDDING_MODEL),
         )
         row = await cursor.fetchone()
@@ -34,7 +34,8 @@ async def _save_to_cache(text_hash: str, vector: list[float]):
     async with await async_get_connection() as conn:
         vector_json = json.dumps(vector).encode("utf-8")
         await conn.execute(
-            "INSERT OR REPLACE INTO embedding_cache (content_hash, vector, model_name) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO embedding_cache "
+            "(content_hash, vector, model_name) VALUES (?, ?, ?)",
             (text_hash, vector_json, EMBEDDING_MODEL),
         )
         await conn.commit()

@@ -64,7 +64,8 @@ async def perform_keyword_search(
         # 2. Search Thoughts DB
         async with await async_get_thoughts_connection() as t_conn:
             t_cursor = await t_conn.execute(
-                "SELECT session_id, thought_number, thought FROM thought_history WHERE session_id != ?",
+                "SELECT session_id, thought_number, thought "
+                "FROM thought_history WHERE session_id != ?",
                 (exclude_session_id or "",),
             )
             for sess_id, t_num, thought in await t_cursor.fetchall():
@@ -126,7 +127,9 @@ async def perform_search(query: str, limit: int = 10):
             results = []
             for i, cid in enumerate(c_ids):
                 sim = float(similarities[i])
-                count, last = meta_map.get(cid, (0, datetime.datetime.now().isoformat()))
+                count, last = meta_map.get(
+                    cid, (0, datetime.datetime.now().isoformat())
+                )
                 importance = calculate_importance(count, last)
 
                 # Hybrid Score: 70% semantic, 30% importance/recency
@@ -220,7 +223,8 @@ async def synthesize_knowledge(entity_name: str):
             rels = await cursor.fetchall()
 
             prompt = (
-                f"You are a Knowledge Synthesis Engine. Summarize everything known about '{entity_name}'.\n\n"
+                "You are a Knowledge Synthesis Engine. "
+                f"Summarize everything known about '{entity_name}'.\n\n"
                 f"ENTITIY INFO: {entity[1]} - {entity[2]}\n\n"
                 f"OBSERVATIONS:\n"
                 + "\n".join([f"- ({o[1]}) {o[0]}" for o in obs])
@@ -228,7 +232,8 @@ async def synthesize_knowledge(entity_name: str):
                 "RELATIONS:\n"
                 + "\n".join([f"- {r[0]} --({r[2]})--> {r[1]}" for r in rels])
                 + "\n\n"
-                "Create a concise, structured synthesis of this entity and its role in the project."
+                "Create a concise, structured synthesis of this entity and "
+                "its role in the project."
             )
 
             client = get_gemini_client()

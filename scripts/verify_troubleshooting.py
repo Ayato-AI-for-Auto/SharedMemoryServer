@@ -1,15 +1,15 @@
 import asyncio
-import sys
 import os
+import sys
 
 # Add src to path
 sys.path.insert(0, os.path.abspath("src"))
 
+from shared_memory.database import init_db
 from shared_memory.troubleshooting import (
     save_troubleshooting_record,
     search_troubleshooting_history,
 )
-from shared_memory.database import init_db
 
 
 async def test_troubleshooting():

@@ -1,4 +1,4 @@
-with open("test_results.txt", "r", encoding="utf-16le") as f:
+with open("test_results.txt", encoding="utf-16le") as f:
     lines = f.readlines()
     for line in lines:
         if "FAIL" in line or "Error" in line:

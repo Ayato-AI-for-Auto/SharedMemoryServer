@@ -1,10 +1,14 @@
 import asyncio
 import os
-import aiosqlite
 from datetime import datetime, timedelta
 from typing import Any
 
-from shared_memory.database import async_get_connection as get_main_connection, async_get_thoughts_connection, retry_on_db_lock
+import aiosqlite
+
+from shared_memory.database import (
+    async_get_thoughts_connection,
+    retry_on_db_lock,
+)
 from shared_memory.exceptions import DatabaseError
 from shared_memory.search import perform_keyword_search
 from shared_memory.utils import (
@@ -54,13 +58,16 @@ async def init_thoughts_db():
 
         # Indices for performance and efficient sequence lookups
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_thought_session ON thought_history (session_id)"
+            "CREATE INDEX IF NOT EXISTS idx_thought_session "
+            "ON thought_history (session_id)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_thought_number ON thought_history (session_id, thought_number)"
+            "CREATE INDEX IF NOT EXISTS idx_thought_number "
+            "ON thought_history (session_id, thought_number)"
         )
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_thought_timestamp ON thought_history (timestamp)"
+            "CREATE INDEX IF NOT EXISTS idx_thought_timestamp "
+            "ON thought_history (timestamp)"
         )
         await conn.commit()
 
@@ -78,7 +85,8 @@ async def process_thought_core(
     session_id: str = "default_session",
 ) -> dict[str, Any]:
     """
-    Implements the core logic for sequential thinking with security, validation, and persistence.
+    Implements the core logic for sequential thinking with security,
+    validation, and persistence.
     """
     try:
         # Lazy initialization
@@ -91,12 +99,17 @@ async def process_thought_core(
             # 2. Validation: Check sequence integrity
             if is_revision and revises_thought:
                 cursor = await conn.execute(
-                    "SELECT id FROM thought_history WHERE session_id = ? AND thought_number = ?",
+                    "SELECT id FROM thought_history "
+                    "WHERE session_id = ? AND thought_number = ?",
                     (session_id, revises_thought),
                 )
                 if not await cursor.fetchone():
+                    error_msg = (
+                        f"Invalid revision: Thought #{revises_thought} "
+                        f"does not exist in session '{session_id}'"
+                    )
                     return {
-                        "error": f"Invalid revision: Thought #{revises_thought} does not exist in session '{session_id}'",
+                        "error": error_msg,
                         "thoughtNumber": thought_number,
                         "totalThoughts": total_thoughts,
                     }
@@ -105,8 +118,8 @@ async def process_thought_core(
             await conn.execute(
                 """
                 INSERT INTO thought_history (
-                    session_id, thought_number, total_thoughts, thought, 
-                    next_thought_needed, is_revision, revises_thought, 
+                    session_id, thought_number, total_thoughts, thought,
+                    next_thought_needed, is_revision, revises_thought,
                     branch_from_thought, branch_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -133,7 +146,8 @@ async def process_thought_core(
             history_length = row[0] if row else 0
 
             cursor = await conn.execute(
-                "SELECT DISTINCT branch_id FROM thought_history WHERE session_id = ? AND branch_id IS NOT NULL",
+                "SELECT DISTINCT branch_id FROM thought_history "
+                "WHERE session_id = ? AND branch_id IS NOT NULL",
                 (session_id,),
             )
             branches = [r[0] for r in await cursor.fetchall()]
@@ -205,15 +219,15 @@ async def recover_undistilled_sessions():
     try:
         async with await async_get_thoughts_connection() as conn:
             cursor = await conn.execute("""
-                SELECT DISTINCT session_id FROM thought_history 
+                SELECT DISTINCT session_id FROM thought_history
                 WHERE distilled = 0 AND next_thought_needed = 0
             """)
             sessions_to_recover = [row[0] for row in await cursor.fetchall()]
 
             cursor = await conn.execute("""
-                SELECT DISTINCT session_id FROM thought_history 
-                WHERE distilled = 0 
-                GROUP BY session_id 
+                SELECT DISTINCT session_id FROM thought_history
+                WHERE distilled = 0
+                GROUP BY session_id
                 HAVING MAX(timestamp) < datetime('now', '-30 minutes')
             """)
             stale_sessions = [row[0] for row in await cursor.fetchall()]

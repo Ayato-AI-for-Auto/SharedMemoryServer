@@ -1,12 +1,11 @@
 import sys
-import os
 
 try:
     print("Python path:", sys.path)
     from shared_memory.embeddings import get_gemini_client
-    from shared_memory.distiller import auto_distill_knowledge
+
     print("Import success!")
-    
+
     client = get_gemini_client()
     if client:
         print("Gemini client initialized!")

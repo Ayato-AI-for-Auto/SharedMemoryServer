@@ -72,8 +72,10 @@ SHARED_MEMORY_PROMPT = """
 # SHARED MEMORY SERVER INSTRUCTION
 You have access to SharedMemoryServer MCP.
 - Use it to maintain project-wide entities, relations, and factual observations.
-- Always call `read_memory(query=...)` at the start of a task to gather relevant context.
-- Use `save_memory` to persist important architectural roles, technical decisions, and multi-step progress.
+- Always call `read_memory(query=...)` at the start of a task to
+  gather relevant context.
+- Use `save_memory` to persist important architectural roles,
+  technical decisions, and multi-step progress.
 """
 
 
@@ -120,7 +122,10 @@ def register_single_mcp(config_paths, server_name, mcp_config, dry_run=False):
                         config["cursor.mcpServers"] = {}
                     config["cursor.mcpServers"][server_name] = {
                         "type": "command",
-                        "command": f'"{mcp_config["command"]}" {" ".join(mcp_config["args"])}'.strip(),
+                        "command": (
+                            f'"{mcp_config["command"]}" '
+                            f'{" ".join(mcp_config["args"])}'
+                        ).strip(),
                         "env": mcp_config["env"],
                     }
                 else:
@@ -239,7 +244,10 @@ def register_mcp(dry_run=False, isolate=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Register SharedMemoryServer as an MCP tool and update system prompts."
+        description=(
+            "Register SharedMemoryServer as an MCP tool "
+            "and update system prompts."
+        )
     )
     parser.add_argument(
         "--dry-run",
@@ -249,7 +257,10 @@ def main():
     parser.add_argument(
         "--isolate",
         action="store_true",
-        help="Register a unique instance for the current project to avoid shared memory.",
+        help=(
+            "Register a unique instance for the current project "
+            "to avoid shared memory."
+        ),
     )
     args = parser.parse_args()
 

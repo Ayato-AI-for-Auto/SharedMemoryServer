@@ -1,7 +1,7 @@
 import asyncio
 import random
+
 import aiosqlite
-import time
 
 from shared_memory.exceptions import DatabaseError, DatabaseLockedError
 from shared_memory.utils import get_db_path, log_error
@@ -20,7 +20,8 @@ def retry_on_db_lock(max_retries=15, initial_delay=0.1):
                         retries += 1
                         if retries == max_retries:
                             raise DatabaseLockedError(
-                                f"Database remained locked after {max_retries} attempts."
+                                f"Database remained locked after {max_retries} "
+                                "attempts."
                             ) from e
                         delay = min(
                             initial_delay * (2 ** (retries - 1)), 1.0
@@ -48,7 +49,7 @@ class AsyncSQLiteConnection:
         self.conn = None
 
     async def __aenter__(self):
-        # connect() returns a Connection object. Awaiting it (or entering its ctx) starts it.
+        # connect() returns a Connection object. Awaiting it starts it.
         # We use a context manager internally to manage the thread lifecycle.
         self.conn = await aiosqlite.connect(self.db_path, timeout=self.timeout)
         self.conn.row_factory = aiosqlite.Row
@@ -244,7 +245,9 @@ async def init_db():
         await _add_column_if_missing(cursor, "bank_files", "updated_by TEXT")
         await _add_column_if_missing(cursor, "snapshots", "description TEXT")
         await _add_column_if_missing(cursor, "snapshots", "file_path TEXT")
-        await _add_column_if_missing(cursor, "knowledge_metadata", "decay_rate REAL DEFAULT 0.01")
+        await _add_column_if_missing(
+            cursor, "knowledge_metadata", "decay_rate REAL DEFAULT 0.01"
+        )
 
         await conn.commit()
 
@@ -255,7 +258,10 @@ async def update_access(content_id: str, conn=None):
         async with await async_get_connection() as conn:
             await conn.execute(
                 """
-                INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score, stability, decay_rate)
+                INSERT INTO knowledge_metadata (
+                    content_id, access_count, last_accessed,
+                    importance_score, stability, decay_rate
+                )
                 VALUES (?, 1, CURRENT_TIMESTAMP, 1.0, 1.1, 0.01)
                 ON CONFLICT(content_id) DO UPDATE SET
                     access_count = access_count + 1,
@@ -268,7 +274,10 @@ async def update_access(content_id: str, conn=None):
     else:
         await conn.execute(
             """
-            INSERT INTO knowledge_metadata (content_id, access_count, last_accessed, importance_score, stability, decay_rate)
+            INSERT INTO knowledge_metadata (
+                content_id, access_count, last_accessed,
+                importance_score, stability, decay_rate
+            )
             VALUES (?, 1, CURRENT_TIMESTAMP, 1.0, 1.1, 0.01)
             ON CONFLICT(content_id) DO UPDATE SET
                 access_count = access_count + 1,

@@ -56,7 +56,8 @@ async def get_audit_history_logic(limit: int = 20, table_name: str | None = None
     async with await async_get_connection() as conn:
         if table_name:
             cursor = await conn.execute(
-                "SELECT * FROM audit_logs WHERE table_name = ? ORDER BY timestamp DESC LIMIT ?",
+                "SELECT * FROM audit_logs WHERE table_name = ? "
+                "ORDER BY timestamp DESC LIMIT ?",
                 (table_name, limit),
             )
         else:
@@ -94,12 +95,15 @@ async def rollback_memory_logic(audit_id: int):
 
             if table == "entities":
                 await conn.execute(
-                    "INSERT OR REPLACE INTO entities (name, entity_type, description) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO entities "
+                    "(name, entity_type, description) VALUES (?, ?, ?)",
                     (data["name"], data["type"], data["desc"]),
                 )
             elif table == "bank_files":
                 await conn.execute(
-                    "INSERT OR REPLACE INTO bank_files (filename, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                    "INSERT OR REPLACE INTO bank_files "
+                    "(filename, content, updated_at) "
+                    "VALUES (?, ?, CURRENT_TIMESTAMP)",
                     (cid, data["content"]),
                 )
 
@@ -114,11 +118,16 @@ async def get_memory_health_logic():
     async with await async_get_connection() as conn:
         health = {}
         try:
-            health["entities_count"] = (await (await conn.execute("SELECT COUNT(*) FROM entities")).fetchone())[0]
-            health["relations_count"] = (await (await conn.execute("SELECT COUNT(*) FROM relations")).fetchone())[0]
-            health["observations_count"] = (await (await conn.execute("SELECT COUNT(*) FROM observations")).fetchone())[0]
-            health["bank_files_cached"] = (await (await conn.execute("SELECT COUNT(*) FROM bank_files")).fetchone())[0]
-            health["embeddings_count"] = (await (await conn.execute("SELECT COUNT(*) FROM embeddings")).fetchone())[0]
+            health["entities_count"] = (await (await conn.execute(
+                "SELECT COUNT(*) FROM entities")).fetchone())[0]
+            health["relations_count"] = (await (await conn.execute(
+                "SELECT COUNT(*) FROM relations")).fetchone())[0]
+            health["observations_count"] = (await (await conn.execute(
+                "SELECT COUNT(*) FROM observations")).fetchone())[0]
+            health["bank_files_cached"] = (await (await conn.execute(
+                "SELECT COUNT(*) FROM bank_files")).fetchone())[0]
+            health["embeddings_count"] = (await (await conn.execute(
+                "SELECT COUNT(*) FROM embeddings")).fetchone())[0]
 
             cursor = await conn.execute(
                 "SELECT content_id, access_count, last_accessed FROM knowledge_metadata"
@@ -151,8 +160,8 @@ async def get_memory_health_logic():
 
             # Gaps & Bias
             cursor = await conn.execute("""
-                SELECT name FROM entities 
-                WHERE name NOT IN (SELECT source FROM relations) 
+                SELECT name FROM entities
+                WHERE name NOT IN (SELECT source FROM relations)
                 AND name NOT IN (SELECT target FROM relations)
             """)
             isolated = await cursor.fetchall()
@@ -162,7 +171,8 @@ async def get_memory_health_logic():
             }
 
             if health["entities_count"] > 1:
-                max_relations = health["entities_count"] * (health["entities_count"] - 1)
+                count = health["entities_count"]
+                max_relations = count * (count - 1)
                 health["gaps_analysis"]["graph_density"] = round(
                     health["relations_count"] / max_relations, 4
                 )

@@ -21,7 +21,7 @@ async def lifespan(mcp_instance: FastMCP):
     """
     await init_db()
     await thought_logic.init_thoughts_db()
-    
+
     yield
 
 
@@ -90,8 +90,10 @@ async def sequential_thinking(
 ):
     """
     A detailed tool for dynamic and reflective problem-solving through thoughts.
-    Each thought can build on, question, or revise previous insights as understanding deepens.
-    Automatically surfaces related past memories and thoughts to enrich the reasoning process.
+    Each thought can build on, question, or revise previous insights as
+    understanding deepens.
+    Automatically surfaces related past memories and thoughts to enrich the
+    reasoning process.
     """
     return await thought_logic.process_thought_core(
         thought,
