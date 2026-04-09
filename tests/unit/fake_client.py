@@ -1,4 +1,3 @@
-import json
 
 class FakeGeminiResponse:
     def __init__(self, text="", embeddings=None):
@@ -13,7 +12,9 @@ class FakeModels:
     def embed_content(self, model, contents, config=None):
         if isinstance(contents, str):
             return FakeGeminiResponse(embeddings=[FakeEmbedding([0.1] * 768)])
-        return FakeGeminiResponse(embeddings=[FakeEmbedding([0.1] * 768) for _ in contents])
+        return FakeGeminiResponse(
+            embeddings=[FakeEmbedding([0.1] * 768) for _ in contents]
+        )
 
     def generate_content(self, model, contents, config=None):
         return FakeGeminiResponse(text='{"conflict": false, "reason": "No conflict"}')

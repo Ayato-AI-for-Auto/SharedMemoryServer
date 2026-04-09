@@ -1,6 +1,14 @@
 import os
+
 import pytest
-from shared_memory.utils import PathResolver, sanitize_filename, mask_sensitive_data, GlobalLock
+
+from shared_memory.utils import (
+    GlobalLock,
+    PathResolver,
+    mask_sensitive_data,
+    sanitize_filename,
+)
+
 
 def test_path_resolver_data_dir():
     """Unit test for PathResolver. Ensures data dir is determined."""
@@ -27,7 +35,6 @@ async def test_global_lock_unit():
     async with GlobalLock("unit_test_lock"):
         # Should be able to acquire
         pass
-    
     # After exit, lock should be free
     lock = GlobalLock("unit_test_lock")
     async with lock:

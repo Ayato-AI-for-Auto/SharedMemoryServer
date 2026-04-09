@@ -1,6 +1,8 @@
 import pytest
-from shared_memory.logic import save_memory_core, read_memory_core
+
+from shared_memory.logic import read_memory_core, save_memory_core
 from shared_memory.thought_logic import process_thought_core
+
 
 @pytest.mark.asyncio
 async def test_end_to_end_user_scenario(mock_gemini):
@@ -15,7 +17,7 @@ async def test_end_to_end_user_scenario(mock_gemini):
     await save_memory_core(
         entities=[{"name": "Scenario X", "description": "Experimental setup"}]
     )
-    
+
     # 2. Sequential Thinking Process
     # Step 1: Thinking
     await process_thought_core(
@@ -25,7 +27,7 @@ async def test_end_to_end_user_scenario(mock_gemini):
         next_thought_needed=True,
         session_id="scenario_session"
     )
-    
+
     # Step 2: Final Conclusion (Triggers Distillation)
     await process_thought_core(
         thought="The power constraint is 500W maximum.",
@@ -34,12 +36,12 @@ async def test_end_to_end_user_scenario(mock_gemini):
         next_thought_needed=False,
         session_id="scenario_session"
     )
-    
+
     # 3. Knowledge Retrieval
     # The distillation happens in the background (or foreground in process_thought_core)
     # We verify if we can find '500W' related to 'Scenario X'
     data = await read_memory_core(query="500W power constraint")
-    
+
     # Check graph entities
     found = False
     for entity in data["graph"]["entities"]:
@@ -47,7 +49,8 @@ async def test_end_to_end_user_scenario(mock_gemini):
             found = True
             break
     assert found, "Historical context should be preserved"
-    
+
     # Verify search result context
-    # In search results, either graph data or synthesized context should reflect the new knowledge
+    # In search results, either graph data or synthesized context should reflect
+    # the new knowledge
     assert len(data["graph"]["observations"]) > 0 or len(data["graph"]["entities"]) > 0

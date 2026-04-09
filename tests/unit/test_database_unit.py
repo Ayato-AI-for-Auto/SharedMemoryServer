@@ -1,5 +1,7 @@
 import pytest
-from shared_memory.database import init_db, update_access, async_get_connection
+
+from shared_memory.database import async_get_connection, init_db, update_access
+
 
 @pytest.mark.asyncio
 async def test_init_db_schema():
@@ -19,26 +21,28 @@ async def test_update_access_unit():
     """Unit test for update_access function logic."""
     await init_db()
     content_id = "test_item_1"
-    
+
     # First access
     await update_access(content_id)
-    
+
     async with await async_get_connection() as conn:
         cursor = await conn.execute(
-            "SELECT access_count, stability FROM knowledge_metadata WHERE content_id = ?",
-            (content_id,)
+            "SELECT access_count, stability FROM knowledge_metadata "
+            "WHERE content_id = ?",
+            (content_id,),
         )
         row = await cursor.fetchone()
         assert row is not None
         assert row[0] == 1
-        
+
         # Second access (stability should increase)
         initial_stability = row[1]
         await update_access(content_id)
-        
+
         cursor = await conn.execute(
-            "SELECT access_count, stability FROM knowledge_metadata WHERE content_id = ?",
-            (content_id,)
+            "SELECT access_count, stability FROM knowledge_metadata "
+            "WHERE content_id = ?",
+            (content_id,),
         )
         row = await cursor.fetchone()
         assert row[0] == 2
