@@ -184,7 +184,8 @@ async def save_relations(relations: list[dict[str, Any]], agent_id: str, conn):
         predicate = (r.get("predicate") or r.get("relation_type") or "").strip()
 
         if not all([subject, obj, predicate]):
-            errors.append(f"Error: Relation requires subject, object, and predicate: {r}")
+            msg = f"Error: Relation requires subject, object, and predicate: {r}"
+            errors.append(msg)
             continue
         valid_relations.append((subject, obj, predicate, agent_id))
 

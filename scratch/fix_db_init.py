@@ -11,7 +11,9 @@ async def run_init():
     print("--- SharedMemoryServer DB Initialization ---")
     try:
         await init_db()
-        print("[Success] All tables checked and initialized (including embedding_cache).")
+        print(
+            "[Success] All tables checked and initialized (including embedding_cache)."
+        )
     except Exception as e:
         print(f"[Error] Failed to initialize DB: {e}")
 

@@ -1,7 +1,8 @@
 import pytest
+from unittest.mock import patch
+
 from shared_memory.logic import save_memory_core
 from tests.unit.fake_client import FakeGeminiClient, FakeGeminiResponse
-from unittest.mock import patch
 
 @pytest.mark.asyncio
 async def test_logic_handles_malformed_llm_json_unit(mock_env):
@@ -11,7 +12,9 @@ async def test_logic_handles_malformed_llm_json_unit(mock_env):
     """
     fake_client = FakeGeminiClient()
     # Inject malformed JSON text
-    fake_client.models.generate_content = lambda *args, **kwargs: FakeGeminiResponse(text="INVALID_JSON")
+    fake_client.models.generate_content = lambda *args, **kwargs: FakeGeminiResponse(
+        text="INVALID_JSON"
+    )
 
     with patch("shared_memory.graph.get_gemini_client", return_value=fake_client):
         entities = [{"name": "RobustEntity", "description": "Test"}]
@@ -43,7 +46,7 @@ async def test_logic_partial_success_unit(mock_env):
         {"name": "ValidEntity", "description": "Save me"},
         {"description": "I have no name"}
     ]
-    
+
     res = await save_memory_core(entities=entities)
     assert "Saved 1 entities" in res
     assert "Errors: 1" in res
