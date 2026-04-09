@@ -88,11 +88,26 @@ async def cleanup_tasks():
     """Cancel all pending tasks to prevent event loop hangs."""
     yield
     import asyncio
+    import logging
+
+    # Disable logging during cleanup to avoid noise
+    logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    if tasks:
-        for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+    if not tasks:
+        return
+
+    for t in tasks:
+        t.cancel()
+
+    # Use a timeout for gathering cancelled tasks to prevent teardown itself from hanging
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=2.0
+        )
+    except asyncio.TimeoutError:
+        pass
 
 
 @pytest.fixture(autouse=True)
