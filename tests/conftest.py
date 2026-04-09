@@ -100,13 +100,14 @@ async def cleanup_tasks():
     for t in tasks:
         t.cancel()
 
-    # Use a timeout for gathering cancelled tasks to prevent teardown itself from hanging
+    # Use a timeout for gathering cancelled tasks to prevent teardown itself
+    # from hanging
     try:
         await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True),
             timeout=2.0
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
 
