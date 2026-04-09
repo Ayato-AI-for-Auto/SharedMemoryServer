@@ -44,14 +44,14 @@ jobs:
           # Let's build the register tool as well
           pyinstaller --onefile --name SharedMemoryRegister --clean src/shared_memory/register.py
 
-      - name: Create Release
-        id: create_release
+      - name: Upload Binaries to Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             dist/SharedMemoryServer.exe
             dist/SharedMemoryRegister.exe
-          generate_release_notes: true
+          tag_name: ${{ github.ref_name }}
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
