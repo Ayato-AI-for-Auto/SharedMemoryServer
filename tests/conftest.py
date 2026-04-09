@@ -73,10 +73,14 @@ async def setup_teardown_db(request):
         async_get_thoughts_connection,
     )
 
-    async with await async_get_connection() as conn:
-        await conn.close()
-    async with await async_get_thoughts_connection() as conn:
-        await conn.close()
+    try:
+        async with await async_get_connection() as conn:
+            await conn.close()
+        async with await async_get_thoughts_connection() as conn:
+            await conn.close()
+    except Exception:
+        # Ignore errors during teardown, especially for corruption tests
+        pass
 
 
 @pytest.fixture(autouse=True)
