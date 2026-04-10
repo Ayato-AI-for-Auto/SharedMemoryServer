@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-04-10)
+
+### Code Style
+
+- Fix trailing whitespace in server.py docstring
+  ([`036b156`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/036b156b0207fa752fd59d4391f4d5720e266e26))
+
+### Features
+
+- **mcp**: Add commit advisory to sequential_thinking tool to encourage traceability
+  ([`d0b379f`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/d0b379f1cc8cbb8972bb5aeecfba0b5d369a3b26))
+
+
 ## v1.1.2 (2026-04-10)
 
 ### Bug Fixes
