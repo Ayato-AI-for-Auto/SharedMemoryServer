@@ -22,15 +22,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install .[test]
-          pip install ruff
+          pip install ruff pytest-timeout
       - name: Lint
         run: |
           ruff check .
       - name: Run Tests
         run: |
           # Only run curated tests (unit/integration/system) to ensure stability and isolate resource leaks
-          # Legacy tests are kept in tests/legacy/ for manual/local execution
-          timeout 600 pytest tests/unit/ tests/integration/ tests/system/ -v --durations=10
+          # Use pytest-timeout to catch individual test hangs without blocking the whole job
+          pytest tests/unit/ tests/integration/ tests/system/ -v --durations=10 --timeout=120
 
   release:
     name: Semantic Release

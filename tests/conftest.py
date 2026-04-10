@@ -105,13 +105,15 @@ async def cleanup_tasks():
     for t in tasks:
         t.cancel()
 
-    # Use a minimal timeout. If it still hangs, we force exit by finishing the fixture.
+    # Use a minimal timeout and ensure we don't hang in the cleanup itself.
+    # In CI, we prioritize finishing the job over deep cleanup if it hangs.
     try:
         await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True),
-            timeout=0.5
+            timeout=1.0
         )
     except (TimeoutError, Exception):
+        # Force progress even if cleanup hangs
         pass
 
 
