@@ -163,3 +163,27 @@ async def async_db(temp_db):
     await init_db()
     async with await async_get_connection() as conn:
         yield conn
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    Cache the test run exit status.
+    This ensures we don't accidentally report 'success' if tests failed.
+    """
+    session.config._ci_exitstatus = exitstatus
+
+def pytest_unconfigure(config):
+    """
+    Aggressive zombie-thread killer.
+    Runs after all tests and coverage reporting have completely finished.
+    If we are on CI, bypass Python's atexit and thread-join locks.
+    """
+    exitstatus = getattr(config, "_ci_exitstatus", 0)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        import sys
+        print(
+            f"\n[pytest] Tests finished with status {exitstatus}. Forcing os._exit.",
+            flush=True,
+        )
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(int(exitstatus))
