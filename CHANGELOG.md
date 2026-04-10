@@ -2,6 +2,42 @@
 
 <!-- version list -->
 
+## v1.1.2 (2026-04-10)
+
+### Bug Fixes
+
+- Resolve ruff lint errors (E501, I001, W293)
+  ([`66b6ae8`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/66b6ae851dbaa0f3481cf60bcee1c00c1c1ce850))
+
+- **ci**: Forcibly terminate OS process after tests pass to completely bypass thread hangs
+  ([`20e72ab`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/20e72ab5890056e31a34dfa2c5a20b5c560e86bd))
+
+- **ci**: Switch to pytest-timeout and remove external timeout to prevent job hangs
+  ([`8e9a7db`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/8e9a7db2612f125e47d5270e47abcb0601658fb7))
+
+- **test**: Aggressively prevent event loop hangs in CI by shortening cleanup timeout
+  ([`c1a9ebe`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/c1a9ebe6d1f19f0e53b30efb4ddf8af9ef58dd76))
+
+- **test**: Harden task cleanup in conftest to prevent CI hangs
+  ([`2f13157`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/2f13157d03f79d2b409bd6a13b8b140f1af54ab4))
+
+### Code Style
+
+- Fix remaining ruff lint errors including import sorting
+  ([`a243b8f`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/a243b8fba5b4aafc7a11439864deae7b389b01dc))
+
+- Replace aliased asyncio.TimeoutError with builtin TimeoutError (UP041)
+  ([`ee7c649`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/ee7c64942a61c52b982028dfc20c902fb14538f7))
+
+- Sort imports in tests and scratch scripts to satisfy ruff
+  ([`293f8bf`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/293f8bff99ca0e2c96a9bf99a69cdefe607f52f4))
+
+### Refactoring
+
+- Semantic naming alignment and database resilience hardening
+  ([`6e47cf7`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/6e47cf7bec74192b1800573c958b5a991631290f))
+
+
 ## v1.1.1 (2026-04-09)
 
 ### Bug Fixes
