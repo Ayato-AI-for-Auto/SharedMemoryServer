@@ -1,7 +1,11 @@
 import pytest
 
 from shared_memory.insights import InsightEngine
-from shared_memory.logic import read_memory_core, save_memory_core
+from shared_memory.logic import (
+    get_value_report_core, 
+    read_memory_core, 
+    save_memory_core
+)
 
 
 @pytest.mark.asyncio
@@ -50,9 +54,12 @@ async def test_complete_knowledge_lifecycle_system():
     await read_memory_core(query="Database")   # Hit 3
     await read_memory_core(query="ImaginaryFeature") # Miss 1
 
-    # 3. Request Value Report
-    metrics = await InsightEngine.get_summary_metrics()
-    report = InsightEngine.generate_report_markdown(metrics)
+    # 3. Request Value Report (Simulate Admin Tool Call)
+    # 3.1 JSON Format (for Dashboards)
+    metrics = await get_value_report_core(format_type="json")
+    
+    # 3.2 Markdown Format (for Human Report)
+    report = await get_value_report_core(format_type="markdown")
 
     # 4. Final System Validations
     f = metrics["facts"]
