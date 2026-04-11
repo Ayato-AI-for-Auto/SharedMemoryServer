@@ -1,7 +1,11 @@
 from datetime import datetime
 from typing import Any
 
-from shared_memory.database import async_get_connection, async_get_thoughts_connection
+from shared_memory.database import (
+    async_get_connection,
+    async_get_thoughts_connection,
+    retry_on_db_lock,
+)
 
 
 class InsightEngine:
@@ -11,6 +15,7 @@ class InsightEngine:
     """
 
     @staticmethod
+    @retry_on_db_lock()
     async def get_summary_metrics() -> dict[str, Any]:
         """
         データベースから取得した「計測事実」のみを抽出します。

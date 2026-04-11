@@ -4,6 +4,7 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.unit.fake_client import FakeGeminiClient
 
 
 @pytest.fixture
@@ -52,6 +53,15 @@ def mock_env(temp_db, temp_bank, temp_home):
 
     with patch.dict(os.environ, env_vars):
         yield
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_gemini_globally():
+    """Globally mocks Gemini API to prevent network calls and hangs during tests."""
+    fake_client = FakeGeminiClient()
+    with patch("google.genai.Client", return_value=fake_client):
+        with patch("shared_memory.embeddings.get_gemini_client", return_value=fake_client):
+            with patch("shared_memory.graph.get_gemini_client", return_value=fake_client):
+                yield fake_client
 
 
 @pytest.fixture(autouse=True)
