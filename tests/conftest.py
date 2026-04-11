@@ -56,7 +56,7 @@ def mock_env(temp_db, temp_bank, temp_home):
 
 @pytest.fixture(autouse=True)
 async def setup_teardown_db(request):
-    from shared_memory.database import init_db
+    from shared_memory.database import AsyncSQLiteConnection, init_db
     from shared_memory.thought_logic import init_thoughts_db
 
     # Skip auto-initialization for migration tests in test_database.py
@@ -67,19 +67,10 @@ async def setup_teardown_db(request):
     await init_db()
     await init_thoughts_db()
     yield
-    # Explicitly close connections after each test to prevent locks/hangs
-    from shared_memory.database import (
-        async_get_connection,
-        async_get_thoughts_connection,
-    )
-
+    # Aggressively close ALL tracked connections to prevent hangs
     try:
-        async with await async_get_connection() as conn:
-            await conn.close()
-        async with await async_get_thoughts_connection() as conn:
-            await conn.close()
+        await AsyncSQLiteConnection.close_all_active()
     except Exception:
-        # Ignore errors during teardown, especially for corruption tests
         pass
 
 

@@ -11,6 +11,7 @@ async def test_search_to_insight_integration():
     Checks the flow between memory utilization and its quantification.
     """
     # 1. Save dummy knowledge
+    print("\n--- Diagnostic: Starting Step 1 (Save)")
     await save_memory_core(
         entities=[{
             "name": "Python",
@@ -18,17 +19,22 @@ async def test_search_to_insight_integration():
             "description": "A coding language"
         }]
     )
+    print("--- Diagnostic: Step 1 (Save) Complete")
 
     # 2. Perform searches (1 hit)
-    # Note: Our search implementation might find "Python" in its search.
+    print("--- Diagnostic: Starting Step 2a (Search Hit)")
     await read_memory_core(query="Python")
+    print("--- Diagnostic: Step 2a (Search Hit) Complete")
 
     # Perform a query that definitely misses (0 results)
-    # We use a query that isn't in names or descriptions.
+    print("--- Diagnostic: Starting Step 2b (Search Miss)")
     await read_memory_core(query="ZyzygyNonExistentWord123")
+    print("--- Diagnostic: Step 2b (Search Miss) Complete")
 
     # 3. Verify through InsightEngine
+    print("--- Diagnostic: Starting Step 3 (Insights)")
     metrics = await InsightEngine.get_summary_metrics()
+    print("--- Diagnostic: Step 3 (Insights) Complete")
     f = metrics["facts"]
 
     assert f["total_search_queries"] == 2

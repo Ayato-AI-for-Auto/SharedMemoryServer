@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 
 import aiosqlite
@@ -42,11 +43,29 @@ class AsyncSQLiteConnection:
     even when used with the 'async with await' pattern.
     """
 
+    _active_connections = set()
+
     def __init__(self, db_path: str, timeout: float = 30.0, is_thoughts: bool = False):
         self.db_path = db_path
         self.timeout = timeout
         self.is_thoughts = is_thoughts
         self.conn = None
+
+    @classmethod
+    def get_active_count(cls):
+        return len(cls._active_connections)
+
+    @classmethod
+    async def close_all_active(cls):
+        """Force close all tracked connections (Testing helper)."""
+        import copy
+        conns = copy.copy(cls._active_connections)
+        for c in conns:
+            try:
+                await c.close()
+            except Exception:
+                pass
+        cls._active_connections.clear()
 
     async def __aenter__(self):
         import sqlite3
@@ -59,6 +78,11 @@ class AsyncSQLiteConnection:
                 await self.conn.execute("PRAGMA foreign_keys = ON")
             await self.conn.execute("PRAGMA journal_mode = WAL")
             await self.conn.execute("PRAGMA synchronous = NORMAL")
+            
+            # Track connection for cleanup
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                self._active_connections.add(self.conn)
+                
             return self.conn
         except (aiosqlite.Error, sqlite3.Error) as e:
             log_error(f"Failed to connect to database at {self.db_path}", e)
@@ -66,7 +90,10 @@ class AsyncSQLiteConnection:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
+            if self.conn in self._active_connections:
+                self._active_connections.discard(self.conn)
             await self.conn.close()
+            self.conn = None
 
     def __await__(self):
         # This allows 'await async_get_connection()' to return 'self'
