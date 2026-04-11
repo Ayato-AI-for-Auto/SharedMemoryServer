@@ -64,6 +64,15 @@ async def admin_restore_snapshot(snapshot_id: int):
     return await logic.restore_snapshot_core(snapshot_id)
 
 
+@mcp.tool()
+async def admin_get_value_report(format_type: str = "markdown"):
+    """
+    Returns an objective value report (Fact-Based) of the memory server.
+    :param format_type: 'markdown' (default) for report, 'json' for data.
+    """
+    return await logic.get_value_report_core(format_type)
+
+
 def main():
     """Entry point for the Admin MCP server."""
     mcp.run()

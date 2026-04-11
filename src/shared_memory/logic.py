@@ -5,6 +5,7 @@ from typing import Any
 import aiosqlite
 
 from shared_memory import bank, graph, health, management, search
+from shared_memory.insights import InsightEngine
 from shared_memory.database import async_get_connection, retry_on_db_lock
 from shared_memory.embeddings import compute_embeddings_bulk
 from shared_memory.exceptions import DatabaseError, SharedMemoryError
@@ -176,3 +177,13 @@ async def get_memory_health_core():
 
 async def repair_memory_core():
     return await bank.repair_memory_logic()
+
+
+async def get_value_report_core(format_type: str = "markdown"):
+    """
+    Returns an objective value report of the memory server.
+    :param format_type: 'markdown' for human reading, 'json' for UI/API integration.
+    """
+    if format_type == "json":
+        return await InsightEngine.get_summary_metrics()
+    return await InsightEngine.generate_report_markdown()
