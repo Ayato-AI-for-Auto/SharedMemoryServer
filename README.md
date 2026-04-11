@@ -37,8 +37,9 @@ graph TD
 ```
 
 ### Why this architecture wins:
-- **Lock Contention**: Reduced DB lock duration from **~2000ms to <50ms**.
-- **Agent Density**: Verified to support 3-5 simultaneous agents without deadlocks.
+- **Lock Contention**: Reduced DB lock duration from **~2000ms to <50ms** by computing embeddings outside transactions.
+- **Agent Density**: Verified to support 3-5 simultaneous agents performing complex read/write operations in **~1.36 seconds** total.
+- **Atomic Mirroring**: Ensures Knowledge Graph (DB) and Memory Bank (Markdown) are always in sync.
 
 👉 **[Deep Dive into Architecture (Ayato Studio Portal)](https://ayato-studio.ai/architecture)**
 
@@ -63,13 +64,41 @@ What you can evaluate from this specific codebase:
 
 ---
 
-## ⚡ Quick Start (Technical Implementation)
-### 🤖 Toolset (Admin/Agent Separation)
-SharedMemoryServer enforces a **Security-First** tool hierarchy:
-- **Agent Server**: Strictly read/write tools for reasoning tasks.
-- **Admin Server**: Infrastructure tools for Audit logs, Rollbacks, and Snapshots.
+## 🛠️ Toolset (Separated Concerns)
+We strictly separate **Agent reasoning** from **System administration** to ensure safety and prevent cognitive overload.
 
-[Technical Documentation & API Reference →](docs/api_reference.md)
+### 🤖 Agent Core Tools
+The primary tools used by AI agents during task execution.
+- **`read_memory`**: Hybrid semantic + keyword search across the Graph and Bank.
+- **`save_memory`**: Atomic update for both structured entities and markdown documentation.
+- **`synthesize_entity`**: Aggregates distributed information into a coherent master summary.
+- **`sequential_thinking`**: Context-aware reflective problem-solving tool.
+
+### 🛡️ Admin Maintenance Tools
+Infrastructure tools for system integrity (Separated from standard agent access).
+- **`admin_get_audit_history`**: Audit logs for all memory changes.
+- **`admin_rollback_memory`**: Revert specific changes via Audit ID.
+- **`admin_create_snapshot`**: Create point-in-time database backups.
+- **`admin_repair`**: Reconstruct physical workspace files from DB mirroring.
+
+---
+
+## ⚡ Quick Start
+### 1. Installation
+```bash
+uv pip install -e .
+```
+
+### 2. Execution
+```bash
+uv run shared-memory         # Start Agent Server
+uv run shared-memory-admin   # Start Admin Server
+```
+
+### 3. Integration
+```bash
+uv run shared-memory-register # Register with Cursor/Claude
+```
 
 ---
 
