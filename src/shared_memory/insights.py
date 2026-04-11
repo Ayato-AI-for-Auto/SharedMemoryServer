@@ -1,9 +1,8 @@
-import json
-import math
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from shared_memory.database import async_get_connection, async_get_thoughts_connection
+
 
 class InsightEngine:
     """
@@ -12,7 +11,7 @@ class InsightEngine:
     """
 
     @staticmethod
-    async def get_summary_metrics() -> Dict[str, Any]:
+    async def get_summary_metrics() -> dict[str, Any]:
         """
         データベースから取得した「計測事実」のみを抽出します。
         """
@@ -24,7 +23,7 @@ class InsightEngine:
             r_count = (await cursor.fetchone())[0]
             cursor = await conn.execute("SELECT COUNT(*) FROM bank_files")
             b_count = (await cursor.fetchone())[0]
-            
+
             # 知識密度 (Graph Density)
             density = 0
             if e_count > 1:
@@ -36,15 +35,20 @@ class InsightEngine:
             row = await cursor.fetchone()
             total_access = row[0] or 0
             accessed_units = row[1] or 0
-            
+
             reuse_multiplier = round(total_access / accessed_units, 2) if accessed_units > 0 else 0
 
             # 3. 検索ヒット率 (Search Hit Rate) - 新規計測事実
-            cursor = await conn.execute("SELECT COUNT(*), SUM(CASE WHEN results_count > 0 THEN 1 ELSE 0 END) FROM search_stats")
+            cursor = await conn.execute(
+                """
+                SELECT COUNT(*), SUM(CASE WHEN results_count > 0 THEN 1 ELSE 0 END) 
+                FROM search_stats
+                """
+            )
             s_row = await cursor.fetchone()
             total_searches = s_row[0] or 0
             total_hits = s_row[1] or 0
-            
+
             hit_rate = round((total_hits / total_searches) * 100, 1) if total_searches > 0 else 0.0
 
         async with await async_get_thoughts_connection() as conn_t:
@@ -65,22 +69,24 @@ class InsightEngine:
                 "total_read_operations": total_access,
                 "total_search_queries": total_searches,
                 "search_hit_rate_percent": hit_rate,
-                "avg_thoughts_per_session": avg_steps
+                "avg_thoughts_per_session": avg_steps,
             },
             "efficiency_indicators": {
                 "reuse_multiplier": reuse_multiplier,
-                "knowledge_availability_ratio": round((accessed_units / max(1, e_count + b_count)) * 100, 1),
-            }
+                "knowledge_availability_ratio": round(
+                    (accessed_units / max(1, e_count + b_count)) * 100, 1
+                ),
+            },
         }
 
     @staticmethod
-    def generate_report_markdown(metrics_data: Dict[str, Any]) -> str:
+    def generate_report_markdown(metrics_data: dict[str, Any]) -> str:
         """
         主観的な主張を排除し、観測された事実のみを報告する。
         """
         f = metrics_data["facts"]
         i = metrics_data["efficiency_indicators"]
-        
+
         report = f"""# SharedMemory Fact Report: 知識活用実績
 Generated at: {metrics_data["timestamp"]}
 
@@ -97,18 +103,24 @@ Generated at: {metrics_data["timestamp"]}
 
 - **検索ヒット率 (Hit Rate)**: `{f['search_hit_rate_percent']}%`
   > [!NOTE]
-  > ヒット率は、全検索クエリ `{f['total_search_queries']} 回` のうち、何らかの記憶が呼び出された割合です。
+  > ヒット率は、全検索クエリ `{f['total_search_queries']} 回` のうち、
+  > 何らかの記憶が呼び出された割合です。
 
 - **活用係数 (Reuse Multiplier)**: `{i['reuse_multiplier']}x`
   > [!TIP]
-  > 一度保存された知識は、平均して **{i['reuse_multiplier']}回** 繰り返し再利用されています。
+  > 一度保存された知識は、平均して **{i['reuse_multiplier']}回** 
+  > 繰り返し再利用されています。
 
 ## 3. 推論プロセスの観測 (Reasoning Metrics)
-- **総思考ステップ数**: `{f['avg_thoughts_per_session'] * (f['stored_entities'] // 10 + 1)} steps (推定)`
+- **総思考ステップ数**: 
+  `{(f['avg_thoughts_per_session'] * (f['stored_entities'] // 10 + 1)):.1f} steps`
 - **1セッションあたりの平均思考手数**: `{f['avg_thoughts_per_session']} steps`
 
 ---
 **本レポートの性質について**:
-この報告書には推定値（例：コスト削減額など）は一切含まれていません。提示されている数値はすべて、データベースのアクセスログおよび検索履歴から抽出された**観測事実**です。価値の最終的な判断は、これらの実績に基づきユーザー自身が行うものと定義されています。
+この報告書には推定値（例：コスト削減額など）は一切含まれていません。
+提示されている数値はすべて、データベースのアクセスログおよび検索履歴から抽出された
+**観測事実**です。価値の最終的な判断は、これらの実績に基づき
+ユーザー自身が行うものと定義されています。
 """
         return report

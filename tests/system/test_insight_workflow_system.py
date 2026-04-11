@@ -1,20 +1,32 @@
 import pytest
-from shared_memory.logic import save_memory_core, read_memory_core
+
 from shared_memory.insights import InsightEngine
+from shared_memory.logic import read_memory_core, save_memory_core
+
 
 @pytest.mark.asyncio
 async def test_complete_knowledge_lifecycle_system():
     """
-    System Test: Verifies the entire lifecycle of knowledge and its value quantification.
+    System Test: Verifies the entire lifecycle of knowledge and 
+    its value quantification.
     Scenario:
     1. Agent stores domain-specific patterns.
     2. Agent queries the patterns multiple times during a task.
-    3. Management retrieves the Insight Report to prove project understanding and efficiency.
+    3. Management retrieves the Insight Report to prove project 
+       understanding and efficiency.
     """
     # 1. Store complex knowledge (2 entities, 1 relation, 1 bank file)
     entities = [
-        {"name": "AuthModule", "entity_type": "component", "description": "Handles OIDC flows"},
-        {"name": "Database", "entity_type": "infrastructure", "description": "Managed PostgreSQL"}
+        {
+            "name": "AuthModule",
+            "entity_type": "component",
+            "description": "Handles OIDC flows"
+        },
+        {
+            "name": "Database",
+            "entity_type": "infrastructure",
+            "description": "Managed PostgreSQL"
+        }
     ]
     relations = [
         {"subject": "AuthModule", "object": "Database", "predicate": "writes_to"}
@@ -22,11 +34,11 @@ async def test_complete_knowledge_lifecycle_system():
     bank_files = {
         "security_policy.md": "# Security\nAll connections must use TLS."
     }
-    
+
     save_result = await save_memory_core(
-        entities=entities, 
-        relations=relations, 
-        bank_files=bank_files, 
+        entities=entities,
+        relations=relations,
+        bank_files=bank_files,
         agent_id="test_system_agent"
     )
     assert "Saved 2 entities" in save_result
@@ -48,7 +60,7 @@ async def test_complete_knowledge_lifecycle_system():
     assert f["stored_bank_files"] == 1
     assert f["total_search_queries"] == 4
     assert f["search_hit_rate_percent"] == 75.0 # 3/4
-    
+
     # Verify report narrative
     assert "検索ヒット率 (Hit Rate): 75.0%" in report
     assert "活用係数 (Reuse Multiplier)" in report

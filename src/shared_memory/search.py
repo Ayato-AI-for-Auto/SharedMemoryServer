@@ -3,7 +3,11 @@ import json
 import re
 
 from shared_memory.bank import read_bank_data
-from shared_memory.database import async_get_connection, async_get_thoughts_connection
+from shared_memory.database import (
+    async_get_connection,
+    async_get_thoughts_connection,
+    log_search_stat,
+)
 from shared_memory.embeddings import (
     EMBEDDING_MODEL,
     compute_embedding,
@@ -14,11 +18,6 @@ from shared_memory.utils import (
     batch_cosine_similarity,
     calculate_importance,
     log_error,
-)
-from shared_memory.database import (
-    async_get_connection,
-    async_get_thoughts_connection,
-    log_search_stat,
 )
 
 
@@ -213,7 +212,7 @@ async def get_bank_data_by_cids(cids: list[str], conn):
         cids,
     )
     files = await cursor.fetchall()
-    
+
     # Track usage (Reuse Fact)
     for cid in cids:
         from shared_memory.database import update_access

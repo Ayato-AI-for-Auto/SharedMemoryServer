@@ -1,7 +1,8 @@
 import pytest
-from shared_memory.logic import read_memory_core, save_memory_core
-from shared_memory.database import async_get_connection
+
 from shared_memory.insights import InsightEngine
+from shared_memory.logic import read_memory_core, save_memory_core
+
 
 @pytest.mark.asyncio
 async def test_search_to_insight_integration():
@@ -11,13 +12,17 @@ async def test_search_to_insight_integration():
     """
     # 1. Save dummy knowledge
     await save_memory_core(
-        entities=[{"name": "Python", "entity_type": "language", "description": "A coding language"}]
+        entities=[{
+            "name": "Python",
+            "entity_type": "language",
+            "description": "A coding language"
+        }]
     )
 
     # 2. Perform searches (1 hit)
     # Note: Our search implementation might find "Python" in its search.
     await read_memory_core(query="Python")
-    
+
     # Perform a query that definitely misses (0 results)
     # We use a query that isn't in names or descriptions.
     await read_memory_core(query="ZyzygyNonExistentWord123")
@@ -36,10 +41,14 @@ async def test_multi_access_reuse_multiplier():
     Integration test: multiple reads of the same entity increase reuse multiplier.
     """
     await save_memory_core(
-        entities=[{"name": "ToolA", "entity_type": "tool", "description": "Useful tool"}]
+        entities=[{
+            "name": "ToolA",
+            "entity_type": "tool",
+            "description": "Useful tool"
+        }]
     )
 
-    # Access ToolA twice via search. 
+    # Access ToolA twice via search.
     # Search for "ToolA" should find it and update_access via search logic.
     await read_memory_core(query="ToolA")
     await read_memory_core(query="ToolA")
