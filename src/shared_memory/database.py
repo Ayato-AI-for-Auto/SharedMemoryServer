@@ -221,13 +221,15 @@ async def init_db():
                 resolved INTEGER DEFAULT 0
             )
         """)
-        # Search Stats table for Hit Rate calculation
+        # Search Stats table for Hit Rate and Knowledge Age calculation
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS search_stats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 query TEXT,
-                results_count INTEGER
+                results_count INTEGER,
+                hit_content_ids TEXT,
+                avg_similarity REAL DEFAULT 0.0
             )
         """)
         # Troubleshooting Knowledge table (Decoupled Feature)
@@ -259,6 +261,10 @@ async def init_db():
         await _add_column_if_missing(cursor, "snapshots", "file_path TEXT")
         await _add_column_if_missing(
             cursor, "knowledge_metadata", "decay_rate REAL DEFAULT 0.01"
+        )
+        await _add_column_if_missing(cursor, "search_stats", "hit_content_ids TEXT")
+        await _add_column_if_missing(
+            cursor, "search_stats", "avg_similarity REAL DEFAULT 0.0"
         )
 
         await conn.commit()
@@ -300,11 +306,21 @@ async def update_access(content_id: str, conn=None):
         )
 
 @retry_on_db_lock()
-async def log_search_stat(query: str, results_count: int):
-    """Logs the result count of a search for hit rate calculation."""
+async def log_search_stat(
+    query: str, results_count: int, hit_ids: list[str] = None, avg_sim: float = 0.0
+):
+    """
+    Logs the result count of a search for hit rate and knowledge age calculation.
+    """
     async with await async_get_connection() as conn:
+        import json
+        hit_ids_json = json.dumps(hit_ids or [])
         await conn.execute(
-            "INSERT INTO search_stats (query, results_count) VALUES (?, ?)",
-            (query, results_count),
+            """
+            INSERT INTO search_stats (
+                query, results_count, hit_content_ids, avg_similarity
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (query, results_count, hit_ids_json, avg_sim),
         )
         await conn.commit()
