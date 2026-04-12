@@ -308,6 +308,8 @@ async def init_db():
 
 @retry_on_db_lock()
 async def update_access(content_id: str, conn=None):
+    # Guard: Ensure DB is initialized before any access update
+    await init_db()
     if conn is None:
         async with await async_get_connection() as conn:
             await conn.execute(
@@ -348,6 +350,8 @@ async def log_search_stat(
     """
     Logs the result count of a search for hit rate and knowledge age calculation.
     """
+    # Guard: Ensure DB is initialized before logging stats
+    await init_db()
     import json
     hit_ids_json = json.dumps(hit_ids or [])
 

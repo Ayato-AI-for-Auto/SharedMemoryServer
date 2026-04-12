@@ -67,6 +67,8 @@ async def get_graph_data(query: str = None) -> dict[str, Any]:
     Retrieves knowledge from the graph database.
     Optionally filters graph data based on a query.
     """
+    await init_db()
+    await thought_logic.init_thoughts_db()
     return await logic.graph.get_graph_data(query)
 
 
