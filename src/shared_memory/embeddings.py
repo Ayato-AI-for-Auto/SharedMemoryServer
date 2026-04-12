@@ -5,7 +5,9 @@ import os
 from google import genai
 
 from shared_memory.database import async_get_connection, retry_on_db_lock
-from shared_memory.utils import log_error
+from shared_memory.utils import get_logger, log_error
+
+logger = get_logger("embeddings")
 
 EMBEDDING_MODEL = "gemini-embedding-001"
 DIMENSIONALITY = 768
@@ -17,11 +19,10 @@ def _get_text_hash(text: str) -> str:
 
 @retry_on_db_lock()
 async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None:
-    import sys
-    print(f"EMBEDDING: _get_cached_embedding START hash={text_hash[:8]} reuse_conn={conn is not None}", file=sys.stderr)
+    logger.debug(f"_get_cached_embedding START hash={text_hash[:8]} reuse_conn={conn is not None}")
     
     async def _execute(c):
-        print(f"EMBEDDING: _get_cached_embedding EXECUTING hash={text_hash[:8]}", file=sys.stderr)
+        logger.debug(f"_get_cached_embedding EXECUTING hash={text_hash[:8]}")
         cursor = await c.execute(
             "SELECT vector FROM embedding_cache WHERE "
             "content_hash = ? AND model_name = ?",
@@ -36,7 +37,7 @@ async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None
         return await _execute(conn)
     
     async with await async_get_connection() as c:
-        print(f"EMBEDDING: DB Connection ACQUIRED hash={text_hash[:8]}", file=sys.stderr)
+        logger.debug(f"DB Connection ACQUIRED hash={text_hash[:8]}")
         return await _execute(c)
 
 
@@ -112,8 +113,7 @@ def get_gemini_client() -> genai.Client | None:
 
 async def compute_embedding(text: str, conn=None) -> list[float] | None:
     """Computes embedding with local caching."""
-    import sys
-    print(f"EMBEDDING: compute_embedding START text={text[:20]} reuse_conn={conn is not None}", file=sys.stderr)
+    logger.debug(f"compute_embedding START text={text[:20]}... reuse_conn={conn is not None}")
     text_hash = _get_text_hash(text)
     cached = await _get_cached_embedding(text_hash, conn=conn)
     if cached:

@@ -9,10 +9,13 @@ from shared_memory.embeddings import EMBEDDING_MODEL, compute_embeddings_bulk
 from shared_memory.utils import (
     GlobalLock,
     get_bank_dir,
+    get_logger,
     log_error,
     mask_sensitive_data,
     safe_path_join,
 )
+
+logger = get_logger("bank")
 
 BANK_FILES = {
     "projectBrief.md": "Core requirements and goals.",
@@ -154,9 +157,9 @@ async def save_bank_files(
 
 async def read_bank_data(query: str | None = None):
     # Lock for disk read to ensure atomicity
-    print(f"BANK: read_bank_data START query={query}", file=sys.stderr)
+    logger.info(f"read_bank_data START query={query}")
     async with GlobalLock(BANK_LOCK_NAME):
-        print(f"BANK: GlobalLock ACQUIRED query={query}", file=sys.stderr)
+        logger.debug(f"GlobalLock ACQUIRED query={query}")
         bank_dir = get_bank_dir()
         bank_data = {}
         found_files = set()
@@ -185,7 +188,7 @@ async def read_bank_data(query: str | None = None):
                     if not query or query.lower() in content.lower():
                         # Mark as recovered to avoid confusion
                         bank_data[f"{filename} [RECOVERED]"] = content
-        print(f"BANK: read_bank_data COMPLETE query={query}", file=sys.stderr)
+        logger.info(f"read_bank_data COMPLETE query={query}")
         return bank_data
 
 

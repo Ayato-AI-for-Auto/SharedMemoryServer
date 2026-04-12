@@ -17,45 +17,37 @@ ENABLE_STRUCTURED_LOGGING = (
 )
 
 
+import logging
+
+# Basic configuration for standard logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stderr,
+)
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Returns a configured logger instance for the given name.
+    """
+    return logging.getLogger(f"shared_memory.{name}")
+
 def log_error(msg: str, e: Exception = None, extra: dict[str, Any] = None):
     """
-    Standard error logger. Supports plain text and structured JSON output.
+    Standard error logger using logging module.
     """
-    if ENABLE_STRUCTURED_LOGGING:
-        log_entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": "ERROR",
-            "message": msg,
-            "exception": str(e) if e else None,
-            "extra": extra or {},
-        }
-        sys.stderr.write(json.dumps(log_entry) + "\n")
+    logger = get_logger("core")
+    if e:
+        logger.error(f"{msg}: {e}", extra=extra)
     else:
-        error_msg = f"[SharedMemoryServer ERROR] {msg}"
-        if e:
-            error_msg += f": {e}"
-        if extra:
-            error_msg += f" | {extra}"
-        sys.stderr.write(error_msg + "\n")
-
+        logger.error(msg, extra=extra)
 
 def log_info(msg: str, extra: dict[str, Any] = None):
     """
-    Standard info logger.
+    Standard info logger using logging module.
     """
-    if ENABLE_STRUCTURED_LOGGING:
-        log_entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": "INFO",
-            "message": msg,
-            "extra": extra or {},
-        }
-        sys.stdout.write(json.dumps(log_entry) + "\n")
-    else:
-        info_msg = f"[SharedMemoryServer INFO] {msg}"
-        if extra:
-            info_msg += f" | {extra}"
-        sys.stdout.write(info_msg + "\n")
+    logger = get_logger("core")
+    logger.info(msg, extra=extra)
 
 
 class PathResolver:

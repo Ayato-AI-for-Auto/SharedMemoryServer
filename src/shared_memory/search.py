@@ -18,8 +18,11 @@ from shared_memory.graph import get_graph_data
 from shared_memory.utils import (
     batch_cosine_similarity,
     calculate_importance,
+    get_logger,
     log_error,
 )
+
+logger = get_logger("search")
 
 
 async def perform_keyword_search(
@@ -97,51 +100,49 @@ async def perform_keyword_search(
         hit_ids = [r["id"] for r in formatted_results]
         await log_search_stat(query, len(formatted_results), hit_ids=hit_ids)
 
-        print(f"SEARCH: perform_keyword_search COMPLETE query={query}", file=sys.stderr)
+        logger.info(f"SEARCH: perform_keyword_search COMPLETE query={query}")
         return formatted_results
 
 
 async def perform_search(query: str, limit: int = 10):
     """
-    Core RAG Search logic: Semantic Vector Search + Keyword filtering + Reranking.
+    Expert implementation of hybrid search logic.
     """
-    print(f"SEARCH: perform_search START query={query}", file=sys.stderr)
+    logger.info(f"perform_search START query={query}")
     async with await async_get_connection() as conn:
-        print(f"SEARCH: DB Connection ACQUIRED query={query}", file=sys.stderr)
+        logger.debug(f"DB Connection ACQUIRED query={query}")
         try:
+            logger.debug(f"compute_embedding START text={query[:20]}... reuse_conn=True")
             query_vector = await compute_embedding(query, conn=conn)
             if not query_vector:
                 # Fallback to simple keyword search
                 return await get_graph_data(query), await read_bank_data(query)
-            print(f"SEARCH: query_vector COMPUTED query={query}", file=sys.stderr)
+            logger.debug(f"query_vector COMPUTED query={query}")
 
             # 1. Fetch Candidates (Entities & Bank Files)
-            cursor = await conn.execute(
-                "SELECT content_id, vector FROM embeddings WHERE model_name = ?",
-                (EMBEDDING_MODEL,),
-            )
-            candidates = await cursor.fetchall()
-            print(f"SEARCH: candidates FETCHED count={len(candidates)}", file=sys.stderr)
+            cursor = await conn.execute("SELECT content_id, vector FROM embeddings")
+            all_rows = await cursor.fetchall()
+            logger.debug(f"candidates FETCHED count={len(all_rows)}")
 
-            if not candidates:
+            if not all_rows:
                 return await get_graph_data(query), await read_bank_data(query)
 
             # 2. Compute Similarities
-            c_ids = [c[0] for c in candidates]
-            c_vectors = [json.loads(c[1]) for c in candidates]
-            similarities = batch_cosine_similarity(query_vector, c_vectors)
-            print(f"SEARCH: similarities COMPUTED", file=sys.stderr)
+            all_cids = [r[0] for r in all_rows]
+            all_vectors = [json.loads(r[1]) for r in all_rows]
+            similarities = batch_cosine_similarity(query_vector, all_vectors)
+            logger.debug("similarities COMPUTED")
 
             # 3. Apply Metadata Score (Importance + Decay)
             cursor = await conn.execute(
                 "SELECT content_id, access_count, last_accessed FROM knowledge_metadata"
             )
             metadata = await cursor.fetchall()
-            print(f"SEARCH: metadata FETCHED count={len(metadata)}", file=sys.stderr)
+            logger.debug(f"metadata FETCHED count={len(metadata)}")
             meta_map = {m[0]: (m[1], m[2]) for m in metadata}
 
             results = []
-            for i, cid in enumerate(c_ids):
+            for i, cid in enumerate(all_cids):
                 sim = float(similarities[i])
                 count, last = meta_map.get(
                     cid, (0, datetime.datetime.now().isoformat())
@@ -169,7 +170,7 @@ async def perform_search(query: str, limit: int = 10):
             hit_ids = top_cids
             await log_search_stat(query, hit_count, hit_ids=hit_ids, avg_sim=avg_sim, conn=conn)
 
-            print(f"SEARCH: perform_search COMPLETE query={query}", file=sys.stderr)
+            logger.info(f"perform_search COMPLETE query={query}")
             return graph_data, bank_data
 
         except Exception as e:
