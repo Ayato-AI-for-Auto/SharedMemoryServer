@@ -1,6 +1,7 @@
 import datetime
 import json
 import re
+import sys
 
 from shared_memory.bank import read_bank_data
 from shared_memory.database import (
@@ -96,6 +97,7 @@ async def perform_keyword_search(
         hit_ids = [r["id"] for r in formatted_results]
         await log_search_stat(query, len(formatted_results), hit_ids=hit_ids)
 
+        print(f"SEARCH: perform_keyword_search COMPLETE query={query}", file=sys.stderr)
         return formatted_results
 
 
@@ -103,12 +105,15 @@ async def perform_search(query: str, limit: int = 10):
     """
     Core RAG Search logic: Semantic Vector Search + Keyword filtering + Reranking.
     """
+    print(f"SEARCH: perform_search START query={query}", file=sys.stderr)
     async with await async_get_connection() as conn:
+        print(f"SEARCH: DB Connection ACQUIRED query={query}", file=sys.stderr)
         try:
-            query_vector = await compute_embedding(query)
+            query_vector = await compute_embedding(query, conn=conn)
             if not query_vector:
                 # Fallback to simple keyword search
                 return await get_graph_data(query), await read_bank_data(query)
+            print(f"SEARCH: query_vector COMPUTED query={query}", file=sys.stderr)
 
             # 1. Fetch Candidates (Entities & Bank Files)
             cursor = await conn.execute(
@@ -116,6 +121,7 @@ async def perform_search(query: str, limit: int = 10):
                 (EMBEDDING_MODEL,),
             )
             candidates = await cursor.fetchall()
+            print(f"SEARCH: candidates FETCHED count={len(candidates)}", file=sys.stderr)
 
             if not candidates:
                 return await get_graph_data(query), await read_bank_data(query)
@@ -124,12 +130,14 @@ async def perform_search(query: str, limit: int = 10):
             c_ids = [c[0] for c in candidates]
             c_vectors = [json.loads(c[1]) for c in candidates]
             similarities = batch_cosine_similarity(query_vector, c_vectors)
+            print(f"SEARCH: similarities COMPUTED", file=sys.stderr)
 
             # 3. Apply Metadata Score (Importance + Decay)
             cursor = await conn.execute(
                 "SELECT content_id, access_count, last_accessed FROM knowledge_metadata"
             )
             metadata = await cursor.fetchall()
+            print(f"SEARCH: metadata FETCHED count={len(metadata)}", file=sys.stderr)
             meta_map = {m[0]: (m[1], m[2]) for m in metadata}
 
             results = []
@@ -147,7 +155,8 @@ async def perform_search(query: str, limit: int = 10):
             # 4. Sort and Filter
             results.sort(key=lambda x: x[1], reverse=True)
             # Apply a loose threshold to exclude obvious non-matches from "Hits"
-            top_results = [r for r in results[:limit] if r[1] > 0.4]
+            # Lowered to 0.1 for better recall in tests/mcp environments
+            top_results = [r for r in results[:limit] if r[1] > 0.1]
             top_cids = [r[0] for r in top_results]
 
             # 5. Fetch Content for Top Results
@@ -158,8 +167,9 @@ async def perform_search(query: str, limit: int = 10):
             hit_count = len(graph_data["entities"]) + len(bank_data)
             avg_sim = sum(r[1] for r in top_results) / max(1, hit_count)
             hit_ids = top_cids
-            await log_search_stat(query, hit_count, hit_ids=hit_ids, avg_sim=avg_sim)
+            await log_search_stat(query, hit_count, hit_ids=hit_ids, avg_sim=avg_sim, conn=conn)
 
+            print(f"SEARCH: perform_search COMPLETE query={query}", file=sys.stderr)
             return graph_data, bank_data
 
         except Exception as e:

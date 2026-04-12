@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import aiofiles
 
@@ -153,7 +154,9 @@ async def save_bank_files(
 
 async def read_bank_data(query: str | None = None):
     # Lock for disk read to ensure atomicity
+    print(f"BANK: read_bank_data START query={query}", file=sys.stderr)
     async with GlobalLock(BANK_LOCK_NAME):
+        print(f"BANK: GlobalLock ACQUIRED query={query}", file=sys.stderr)
         bank_dir = get_bank_dir()
         bank_data = {}
         found_files = set()
@@ -182,6 +185,7 @@ async def read_bank_data(query: str | None = None):
                     if not query or query.lower() in content.lower():
                         # Mark as recovered to avoid confusion
                         bank_data[f"{filename} [RECOVERED]"] = content
+        print(f"BANK: read_bank_data COMPLETE query={query}", file=sys.stderr)
         return bank_data
 
 

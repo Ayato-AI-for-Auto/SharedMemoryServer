@@ -5,7 +5,9 @@ from shared_memory.database import (
     async_get_connection,
     async_get_thoughts_connection,
     retry_on_db_lock,
+    init_db,
 )
+from shared_memory.thought_logic import init_thoughts_db
 
 
 class InsightEngine:
@@ -20,6 +22,10 @@ class InsightEngine:
         """
         データベースから取得した「計測事実」のみを抽出します。
         """
+        # Ensure databases are initialized
+        await init_db()
+        await init_thoughts_db()
+
         async with await async_get_connection() as conn:
             # 1. 知識の構造統計 (Knowledge Structure)
             cursor = await conn.execute("SELECT COUNT(*) FROM entities")

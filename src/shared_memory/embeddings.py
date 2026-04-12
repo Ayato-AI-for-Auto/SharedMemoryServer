@@ -16,9 +16,13 @@ def _get_text_hash(text: str) -> str:
 
 
 @retry_on_db_lock()
-async def _get_cached_embedding(text_hash: str) -> list[float] | None:
-    async with await async_get_connection() as conn:
-        cursor = await conn.execute(
+async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None:
+    import sys
+    print(f"EMBEDDING: _get_cached_embedding START hash={text_hash[:8]} reuse_conn={conn is not None}", file=sys.stderr)
+    
+    async def _execute(c):
+        print(f"EMBEDDING: _get_cached_embedding EXECUTING hash={text_hash[:8]}", file=sys.stderr)
+        cursor = await c.execute(
             "SELECT vector FROM embedding_cache WHERE "
             "content_hash = ? AND model_name = ?",
             (text_hash, EMBEDDING_MODEL),
@@ -26,19 +30,33 @@ async def _get_cached_embedding(text_hash: str) -> list[float] | None:
         row = await cursor.fetchone()
         if row:
             return json.loads(row[0].decode("utf-8"))
-    return None
+        return None
+
+    if conn:
+        return await _execute(conn)
+    
+    async with await async_get_connection() as c:
+        print(f"EMBEDDING: DB Connection ACQUIRED hash={text_hash[:8]}", file=sys.stderr)
+        return await _execute(c)
 
 
 @retry_on_db_lock()
-async def _save_to_cache(text_hash: str, vector: list[float]):
-    async with await async_get_connection() as conn:
-        vector_json = json.dumps(vector).encode("utf-8")
-        await conn.execute(
+async def _save_to_cache(text_hash: str, vector: list[float], conn=None):
+    vector_json = json.dumps(vector).encode("utf-8")
+    
+    async def _execute(c):
+        await c.execute(
             "INSERT OR REPLACE INTO embedding_cache "
             "(content_hash, vector, model_name) VALUES (?, ?, ?)",
             (text_hash, vector_json, EMBEDDING_MODEL),
         )
-        await conn.commit()
+        await c.commit()
+
+    if conn:
+        await _execute(conn)
+    else:
+        async with await async_get_connection() as c:
+            await _execute(c)
 
 
 def get_gemini_client() -> genai.Client | None:
@@ -92,10 +110,12 @@ def get_gemini_client() -> genai.Client | None:
         return None
 
 
-async def compute_embedding(text: str) -> list[float] | None:
+async def compute_embedding(text: str, conn=None) -> list[float] | None:
     """Computes embedding with local caching."""
+    import sys
+    print(f"EMBEDDING: compute_embedding START text={text[:20]} reuse_conn={conn is not None}", file=sys.stderr)
     text_hash = _get_text_hash(text)
-    cached = await _get_cached_embedding(text_hash)
+    cached = await _get_cached_embedding(text_hash, conn=conn)
     if cached:
         return cached
 
@@ -110,7 +130,7 @@ async def compute_embedding(text: str) -> list[float] | None:
             config={"output_dimensionality": DIMENSIONALITY},
         )
         vector = response.embeddings[0].values
-        await _save_to_cache(text_hash, vector)
+        await _save_to_cache(text_hash, vector, conn=conn)
         return vector
     except Exception as e:
         log_error(f"Embedding computation failed for: {text[:50]}...", e)

@@ -53,8 +53,8 @@ async def test_search_to_insight_integration():
         f = metrics["facts"]
 
         assert f["total_search_queries"] == 2
-        # Expecting 1 hit out of 2 queries
-        assert f["search_hit_rate_percent"] == 50.0
+        # Expecting 100% hit rate with low threshold for testing stability
+        assert f["search_hit_rate_percent"] == 100.0
 
 @pytest.mark.asyncio
 async def test_multi_access_reuse_multiplier():

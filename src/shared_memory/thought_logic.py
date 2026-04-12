@@ -21,11 +21,16 @@ from shared_memory.utils import (
 # Throttling for background recovery
 LAST_RECOVERY_TIME = datetime.min
 RECOVERY_COOLDOWN = timedelta(minutes=10)
+_THOUGHTS_INITIALIZED = False
 
 
 @retry_on_db_lock()
 async def init_thoughts_db():
     """Initializes the separate thoughts database with optimized indices."""
+    global _THOUGHTS_INITIALIZED
+    if _THOUGHTS_INITIALIZED:
+        return
+
     db_path = get_thoughts_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
@@ -70,6 +75,7 @@ async def init_thoughts_db():
             "ON thought_history (timestamp)"
         )
         await conn.commit()
+        _THOUGHTS_INITIALIZED = True
 
 
 @retry_on_db_lock()
@@ -89,7 +95,9 @@ async def process_thought_core(
     validation, and persistence.
     """
     try:
-        # Lazy initialization
+        # Lazy initialization for both databases to handle cases where lifespan didn't run.
+        from shared_memory.database import init_db
+        await init_db()
         await init_thoughts_db()
 
         # 1. Security: Mask sensitive data

@@ -8,6 +8,10 @@ from shared_memory.exceptions import DatabaseError, DatabaseLockedError
 from shared_memory.utils import get_db_path, log_error
 
 
+# Global flag to track if the main database has been initialized in the current session.
+_DB_INITIALIZED = False
+
+
 def retry_on_db_lock(max_retries=15, initial_delay=0.1):
     def decorator(func):
         async def wrapper(*args, **kwargs):
@@ -143,6 +147,10 @@ async def _add_column_if_missing(cursor, table, col_def):
 
 @retry_on_db_lock()
 async def init_db():
+    global _DB_INITIALIZED
+    if _DB_INITIALIZED:
+        return
+
     async with await async_get_connection() as conn:
         cursor = await conn.cursor()
         await cursor.execute("""
@@ -295,6 +303,7 @@ async def init_db():
         )
 
         await conn.commit()
+        _DB_INITIALIZED = True
 
 
 @retry_on_db_lock()
@@ -334,15 +343,16 @@ async def update_access(content_id: str, conn=None):
 
 @retry_on_db_lock()
 async def log_search_stat(
-    query: str, results_count: int, hit_ids: list[str] = None, avg_sim: float = 0.0
+    query: str, results_count: int, hit_ids: list[str] = None, avg_sim: float = 0.0, conn=None
 ):
     """
     Logs the result count of a search for hit rate and knowledge age calculation.
     """
-    async with await async_get_connection() as conn:
-        import json
-        hit_ids_json = json.dumps(hit_ids or [])
-        await conn.execute(
+    import json
+    hit_ids_json = json.dumps(hit_ids or [])
+
+    async def _execute(c):
+        await c.execute(
             """
             INSERT INTO search_stats (
                 query, results_count, hit_content_ids, avg_similarity
@@ -350,4 +360,10 @@ async def log_search_stat(
             """,
             (query, results_count, hit_ids_json, avg_sim),
         )
-        await conn.commit()
+        await c.commit()
+
+    if conn is not None:
+        await _execute(conn)
+    else:
+        async with await async_get_connection() as conn:
+            await _execute(conn)

@@ -5,11 +5,13 @@ from typing import Any
 import aiosqlite
 
 from shared_memory import bank, graph, health, management, search
-from shared_memory.database import async_get_connection, retry_on_db_lock
+from shared_memory.database import async_get_connection, init_db, retry_on_db_lock
 from shared_memory.embeddings import compute_embeddings_bulk
 from shared_memory.exceptions import DatabaseError, SharedMemoryError
 from shared_memory.insights import InsightEngine
-from shared_memory.utils import log_error
+from shared_memory.utils import get_logger, log_error
+
+logger = get_logger("logic")
 
 
 @retry_on_db_lock()
@@ -24,12 +26,15 @@ async def save_memory_core(
     Orchestrates memory saving using 'Compute-then-Write' pattern.
     Performs all slow AI operations outside the DB transaction.
     """
+    logger.info("save_memory_core START")
+    await init_db()
     entities = entities or []
     relations = relations or []
     observations = observations or []
     bank_files = bank_files or {}
 
     # --- Phase 1: Pre-compute AI results ---
+    logger.debug("Phase 1 (AI) START")
 
     # 1.1 Prepare Embedding Inputs
     entity_texts = []
@@ -66,7 +71,9 @@ async def save_memory_core(
         ))
 
     # 1.3 Execute Parallel AI Calls
+    logger.debug("Phase 1 (AI) GATHERING")
     ai_results = await asyncio.gather(*tasks)
+    logger.debug("Phase 1 (AI) COMPLETE")
 
     all_vectors = ai_results[0]
     raw_conflict_results = ai_results[1:]
@@ -85,8 +92,9 @@ async def save_memory_core(
         })
 
     # --- Phase 2: Rapid DB Write ---
-
+    logger.debug("Phase 2 (DB) START")
     async with await async_get_connection() as conn:
+        logger.debug("DB Connection ACQUIRED")
         results = []
         try:
             if entities:
@@ -128,20 +136,23 @@ async def save_memory_core(
             log_error("Unexpected error in save_memory_core", e)
             raise SharedMemoryError(f"Unexpected error: {e}") from e
 
+    logger.info("save_memory_core COMPLETE")
     return " | ".join(results)
 
 
-@retry_on_db_lock()
 async def read_memory_core(query: str | None = None) -> dict[str, Any]:
     """
     Core logic for reading memory.
     """
+    logger.info(f"read_memory_core START query={query}")
+    await init_db()
     try:
         if query:
             graph_data, bank_data = await search.perform_search(query)
         else:
             graph_data = await graph.get_graph_data()
             bank_data = await bank.read_bank_data()
+        logger.info(f"read_memory_core COMPLETE query={query}")
         return {"graph": graph_data, "bank": bank_data}
     except Exception as e:
         log_error("Error in read_memory_core", e)
