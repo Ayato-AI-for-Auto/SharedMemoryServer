@@ -2,6 +2,112 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-04-13)
+
+### Bug Fixes
+
+- **mcp**: Ensure robust lazy database initialization for sequential_thinking
+  ([`cca39dc`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/cca39dcbf0722dd08ffd73c92c3e4352058d8e44))
+
+- **mcp**: Implement deep initialization hardening for database access
+  ([`9d23fb5`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/9d23fb523cd57b5390b091c1becfffae4c0ea7c3))
+
+### Code Style
+
+- Final ruff cleanup and linting fixes for code and tests
+  ([`cdce2e9`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/cdce2e9ac28e052e9a250429fd1a79ab6fef45fd))
+
+- Fix linting errors in insights.py and synchronize updates
+  ([`79f1254`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/79f125452833df0b00fdf2a443e37dae7af30d53))
+
+- Fix syntax errors and initial ruff formatting issues in insights and tests
+  ([`6af9716`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/6af971684d747a021f0f63931fbfbbb3c7b71359))
+
+### Continuous Integration
+
+- Add GitHub Actions workflow for linting, testing, semantic release, and Windows binary builds
+  ([`251fd24`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/251fd24ab53cbd03e896feca68b75867ccb48be3))
+
+- Add GitHub Actions workflow for linting, testing, semantic release, and Windows binary builds
+  ([`743e274`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/743e274137c29a0f649b65982bba0fbded9d3ff7))
+
+### Documentation
+
+- Balance strategic positioning with hand-on technical depth
+  ([`41537f8`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/41537f8cc639e3b2ab9bb44173bc41425e79c3ea))
+
+- Document design decision for Knowledge Age vs Session ID in design_philosophy.md
+  ([`9ceea1a`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/9ceea1a779ac40eb6fc5a0bdc0dcaa01b179a35d))
+
+- Reform README for strategic AI architect positioning
+  ([`2808aac`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/2808aac4d7100fca28c2458d26f8645a8064b7bb))
+
+### Features
+
+- Add CI/CD pipeline for linting, testing, semantic releases, and Windows binary builds
+  ([`b5dc96c`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/b5dc96c799fbdf22644effc9c401db021fbf9bf6))
+
+- Add CI/CD pipeline with linting, testing, semantic release, and Windows binary builds
+  ([`c1b733e`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/c1b733e23e11164c45121b951499a11a3dd90126))
+
+- Add CI/CD pipeline with linting, testing, semantic release, and Windows binary builds
+  ([`63a0788`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/63a0788390c8e488095656ee03808931974f2a29))
+
+- Add GitHub Actions CI/CD pipeline for linting, testing, semantic releases, and Windows binary
+  builds
+  ([`9ca5f42`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/9ca5f42cd1460107e26b4a4bdf9f4d911d71f606))
+
+- Extend search_stats schema to support knowledge maturity metrics
+  ([`1ce832d`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/1ce832d6873792243da9c8d12b4762f737fcddad))
+
+- Implement 2nd Gen Insight Engine with Knowledge Maturity & Precision metrics
+  ([`9416d3c`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/9416d3c6ba710727bf1f5d580976fb7284a9c4b0))
+
+- Implement core shared memory server architecture including database, embeddings, and bank file
+  management modules
+  ([`0159b5f`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/0159b5f61effea580d85d6a5dbe1f3e8c2c1b776))
+
+- Implement Fact-Based Insight Engine and comprehensive 3-tier testing suite
+  ([`128dc37`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/128dc37aca1c09ce7cfa42029d4879a1271a53f5))
+
+- Implement InsightEngine metrics and add integration test suite for memory search flow
+  ([`73c1756`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/73c175679a87977786172d37d5b54f713a4b8a9d))
+
+- Implement persistent thought logging and automated knowledge distillation system
+  ([`d058800`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/d058800a8fb0592f1581a74ac2282a3922a88992))
+
+- Implement semantic and keyword search systems with Gemini embedding support and persistent caching
+  ([`c8ba107`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/c8ba107fff6caa58358878a5e5b84c1ea710edbc))
+
+- Integrate Insight Engine with Admin MCP Server for external UI data provision
+  ([`f31a346`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/f31a3469bcf7cb75e004b54e51ab9e03649ae38f))
+
+- Record hit IDs and similarity scores in search stats
+  ([`1135b30`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/1135b30661970337305457db7f6c4c740e9a0f9b))
+
+### Refactoring
+
+- Harden database connection management for tests and add diagnostic logging
+  ([`e8646c1`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/e8646c16a33fe26e22e2272eb7b763a72302b344))
+
+### Testing
+
+- Add integration test for admin insight logic flow
+  ([`a18de3e`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/a18de3e7763a0b727db1849dd165242e8433ae8b))
+
+- Add unit test for markdown report generation
+  ([`6a676bb`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/6a676bb9c26a1aaef7c2c4507ae3ca3f43dd7edf))
+
+- Fix unused variables and localized keyword assertions in insight tests
+  ([`371a16d`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/371a16d8cb429a6ce7b369f4abdc0e5ea6fff91d))
+
+- Update system test to verify value report via logic layer
+  ([`d3e0258`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/d3e025805bdbad71ed40f5b89863caf6d17e85c8))
+
+- **system**: Add regression test for robust database initialization
+  ([`04f0538`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/04f053806d4e99e655787097deacc150d50bcb12))
+
+
 ## v1.2.0 (2026-04-10)
 
 ### Code Style
