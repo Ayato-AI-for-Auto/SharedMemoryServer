@@ -15,6 +15,7 @@ def test_get_text_hash_unit():
     assert h1 == h2
     assert h1 != h3
 
+
 @pytest.mark.asyncio
 async def test_compute_embedding_caching_unit():
     """
@@ -32,11 +33,12 @@ async def test_compute_embedding_caching_unit():
         # 2. Second call (should hit cache)
         # We can verify this by checking that the cache entry exists in DB
         from shared_memory.database import async_get_connection
+
         async with await async_get_connection() as conn:
             text_hash = _get_text_hash("cached_text")
             cursor = await conn.execute(
                 "SELECT vector FROM embedding_cache WHERE content_hash = ?",
-                (text_hash,)
+                (text_hash,),
             )
             row = await cursor.fetchone()
             assert row is not None

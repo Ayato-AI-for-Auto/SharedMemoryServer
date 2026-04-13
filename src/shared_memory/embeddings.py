@@ -19,8 +19,11 @@ def _get_text_hash(text: str) -> str:
 
 @retry_on_db_lock()
 async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None:
-    logger.debug(f"_get_cached_embedding START hash={text_hash[:8]} reuse_conn={conn is not None}")
-    
+    logger.debug(
+        f"_get_cached_embedding START hash={text_hash[:8]} "
+        f"reuse_conn={conn is not None}"
+    )
+
     async def _execute(c):
         logger.debug(f"_get_cached_embedding EXECUTING hash={text_hash[:8]}")
         cursor = await c.execute(
@@ -35,7 +38,7 @@ async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None
 
     if conn:
         return await _execute(conn)
-    
+
     async with await async_get_connection() as c:
         logger.debug(f"DB Connection ACQUIRED hash={text_hash[:8]}")
         return await _execute(c)
@@ -44,7 +47,7 @@ async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None
 @retry_on_db_lock()
 async def _save_to_cache(text_hash: str, vector: list[float], conn=None):
     vector_json = json.dumps(vector).encode("utf-8")
-    
+
     async def _execute(c):
         await c.execute(
             "INSERT OR REPLACE INTO embedding_cache "
@@ -113,7 +116,9 @@ def get_gemini_client() -> genai.Client | None:
 
 async def compute_embedding(text: str, conn=None) -> list[float] | None:
     """Computes embedding with local caching."""
-    logger.debug(f"compute_embedding START text={text[:20]}... reuse_conn={conn is not None}")
+    logger.debug(
+        f"compute_embedding START text={text[:20]}... reuse_conn={conn is not None}"
+    )
     text_hash = _get_text_hash(text)
     cached = await _get_cached_embedding(text_hash, conn=conn)
     if cached:

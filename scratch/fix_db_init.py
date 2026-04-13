@@ -18,5 +18,6 @@ async def run_init():
     except Exception as e:
         print(f"[Error] Failed to initialize DB: {e}")
 
+
 if __name__ == "__main__":
     asyncio.run(run_init())

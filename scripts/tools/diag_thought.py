@@ -15,11 +15,12 @@ async def diag():
             thought_number=1,
             total_thoughts=1,
             next_thought_needed=False,
-            session_id="diag_session"
+            session_id="diag_session",
         )
         print(f"Result: {result}")
     except Exception as e:
         print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(diag())

@@ -1,9 +1,10 @@
 from unittest.mock import patch
+
 import pytest
 
+from shared_memory.database import async_get_connection
 from shared_memory.insights import InsightEngine
 from shared_memory.logic import read_memory_core, save_memory_core
-from shared_memory.database import async_get_connection
 from tests.unit.fake_client import FakeGeminiClient
 
 
@@ -17,6 +18,7 @@ async def test_db_heartbeat():
         assert result[0] == 1
     print("--- Diagnostic: Heartbeat SUCCESS")
 
+
 @pytest.mark.asyncio
 async def test_search_to_insight_integration():
     """
@@ -28,11 +30,13 @@ async def test_search_to_insight_integration():
         # 1. Save dummy knowledge
         print("\n--- Diagnostic: Starting Step 1 (Save)")
         await save_memory_core(
-            entities=[{
-                "name": "Python",
-                "entity_type": "language",
-                "description": "A coding language"
-            }]
+            entities=[
+                {
+                    "name": "Python",
+                    "entity_type": "language",
+                    "description": "A coding language",
+                }
+            ]
         )
         print("--- Diagnostic: Step 1 (Save) Complete")
 
@@ -56,6 +60,7 @@ async def test_search_to_insight_integration():
         # Expecting 100% hit rate with low threshold for testing stability
         assert f["search_hit_rate_percent"] == 100.0
 
+
 @pytest.mark.asyncio
 async def test_multi_access_reuse_multiplier():
     """
@@ -64,11 +69,9 @@ async def test_multi_access_reuse_multiplier():
     fake_client = FakeGeminiClient()
     with patch("shared_memory.embeddings.get_gemini_client", return_value=fake_client):
         await save_memory_core(
-            entities=[{
-                "name": "ToolA",
-                "entity_type": "tool",
-                "description": "Useful tool"
-            }]
+            entities=[
+                {"name": "ToolA", "entity_type": "tool", "description": "Useful tool"}
+            ]
         )
 
         # Access ToolA twice via search.

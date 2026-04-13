@@ -123,8 +123,7 @@ def register_single_mcp(config_paths, server_name, mcp_config, dry_run=False):
                     config["cursor.mcpServers"][server_name] = {
                         "type": "command",
                         "command": (
-                            f'"{mcp_config["command"]}" '
-                            f'{" ".join(mcp_config["args"])}'
+                            f'"{mcp_config["command"]}" {" ".join(mcp_config["args"])}'
                         ).strip(),
                         "env": mcp_config["env"],
                     }
@@ -245,8 +244,7 @@ def register_mcp(dry_run=False, isolate=False):
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Register SharedMemoryServer as an MCP tool "
-            "and update system prompts."
+            "Register SharedMemoryServer as an MCP tool and update system prompts."
         )
     )
     parser.add_argument(
@@ -258,8 +256,7 @@ def main():
         "--isolate",
         action="store_true",
         help=(
-            "Register a unique instance for the current project "
-            "to avoid shared memory."
+            "Register a unique instance for the current project to avoid shared memory."
         ),
     )
     args = parser.parse_args()

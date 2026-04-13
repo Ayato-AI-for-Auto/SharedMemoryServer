@@ -23,8 +23,7 @@ def verify():
                 print(f"Using Key from settings.json: {masked_key}")
             else:
                 print(
-                    "No key found at "
-                    "mcpServers.SharedMemoryServer.env.GOOGLE_API_KEY"
+                    "No key found at mcpServers.SharedMemoryServer.env.GOOGLE_API_KEY"
                 )
                 return
     except Exception as e:
@@ -40,7 +39,7 @@ def verify():
         # Minimum request to verify key and model access
         response = client.models.generate_content(
             model=target_model,
-            contents="Confirming API Key Status. Reply with 'OK' if you see this."
+            contents="Confirming API Key Status. Reply with 'OK' if you see this.",
         )
         print(f"SUCCESS! Gemini responded: {response.text.strip()}")
         print(f"RESULT: The API Key and model '{target_model}' are FULLY OPERATIONAL.")
@@ -58,6 +57,7 @@ def verify():
             )
         else:
             print("\nRESULT: Access denied or other configuration issue.")
+
 
 if __name__ == "__main__":
     verify()

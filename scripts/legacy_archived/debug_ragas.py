@@ -34,14 +34,10 @@ async def run_debug():
 
     # Setup
     await save_memory(
-        entities=[{
-            "name": "Project Apollo",
-            "description": "High-speed transcription."
-        }],
-        observations=[{
-            "entity_name": "Project Apollo",
-            "content": "Uses Python 3.11"
-        }]
+        entities=[
+            {"name": "Project Apollo", "description": "High-speed transcription."}
+        ],
+        observations=[{"entity_name": "Project Apollo", "content": "Uses Python 3.11"}],
     )
 
     # Eval
@@ -56,18 +52,17 @@ async def run_debug():
         "question": ["What technology does Project Apollo use?"],
         "answer": [answer],
         "contexts": [context_snippets],
-        "ground_truth": ["Python 3.11"]
+        "ground_truth": ["Python 3.11"],
     }
     dataset = Dataset.from_dict(data)
 
     print("Starting Ragas evaluate...")
     result = evaluate(
         dataset,
-        metrics=[
-            faithfulness, answer_relevancy, context_precision, context_recall
-        ]
+        metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
     )
     print(f"Ragas Result: {result}")
+
 
 if __name__ == "__main__":
     asyncio.run(run_debug())

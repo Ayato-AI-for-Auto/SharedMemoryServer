@@ -24,6 +24,7 @@ async def test_logic_handles_malformed_llm_json_unit(mock_env):
         res = await save_memory_core(entities=entities)
         assert "Saved" in res
 
+
 @pytest.mark.asyncio
 async def test_logic_api_failure_resilience_unit(mock_env):
     """
@@ -38,6 +39,7 @@ async def test_logic_api_failure_resilience_unit(mock_env):
         res = await save_memory_core(entities=entities)
         assert "Saved" in res
 
+
 @pytest.mark.asyncio
 async def test_logic_partial_success_unit(mock_env):
     """
@@ -46,7 +48,7 @@ async def test_logic_partial_success_unit(mock_env):
     # 1 valid, 1 invalid (missing name)
     entities = [
         {"name": "ValidEntity", "description": "Save me"},
-        {"description": "I have no name"}
+        {"description": "I have no name"},
     ]
 
     res = await save_memory_core(entities=entities)

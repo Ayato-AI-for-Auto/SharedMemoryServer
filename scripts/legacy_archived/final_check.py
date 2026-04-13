@@ -16,4 +16,5 @@ try:
 except Exception as e:
     print(f"CRITICAL ERROR: {e}")
     import traceback
+
     traceback.print_exc()

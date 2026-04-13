@@ -33,6 +33,7 @@ async def init_thoughts_db(force: bool = False):
     db_path = get_thoughts_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     from shared_memory.database import _async_get_connection_raw
+
     async with await _async_get_connection_raw(db_path, is_thoughts=True) as conn:
         # Tables for thoughts
         await conn.execute("""
@@ -94,8 +95,10 @@ async def process_thought_core(
     validation, and persistence.
     """
     try:
-        # Lazy initialization for both databases to handle cases where lifespan didn't run.
+        # Lazy initialization for both databases to handle cases where
+        # lifespan didn't run.
         from shared_memory.database import init_db
+
         await init_db()
         await init_thoughts_db()
 
@@ -162,6 +165,7 @@ async def process_thought_core(
             # 5. Distillation
             if not next_thought_needed:
                 from shared_memory.distiller import auto_distill_knowledge
+
                 history = await get_thought_history(session_id)
                 await auto_distill_knowledge(session_id, history)
                 await conn.execute(

@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 
 import aiofiles
 
@@ -51,7 +50,7 @@ async def save_bank_files(
     bank_files: dict[str, str],
     agent_id: str,
     conn,
-    precomputed_vectors: list[list[float]] | None = None
+    precomputed_vectors: list[list[float]] | None = None,
 ):
     """
     Saves bank files to disk and DB.
@@ -74,8 +73,7 @@ async def save_bank_files(
                     "path": path,
                     "content": masked_content,
                     "embedding_text": (
-                        f"File: {sanitized_filename}\n"
-                        f"Content: {masked_content}"
+                        f"File: {sanitized_filename}\nContent: {masked_content}"
                     ),
                 }
             )
@@ -107,9 +105,7 @@ async def save_bank_files(
             )
             old_content_row = await cursor.fetchone()
             old_data = (
-                json.dumps({"content": old_content_row[0]})
-                if old_content_row
-                else None
+                json.dumps({"content": old_content_row[0]}) if old_content_row else None
             )
 
             await conn.execute(

@@ -1,4 +1,3 @@
-
 class FakeGeminiResponse:
     def __init__(self, text="", embeddings=None):
         self.text = text
@@ -26,6 +25,7 @@ class FakeModels:
 
         def _get_val(txt):
             import hashlib
+
             # Deterministic but text-dependent value
             h = hashlib.md5(txt.encode()).hexdigest()
             # Spread values around 0.1 to avoid all-same-vector issues

@@ -67,5 +67,6 @@ def verify():
         else:
             print("\nRESULT: Other error occurred (Network or Permission).")
 
+
 if __name__ == "__main__":
     verify()

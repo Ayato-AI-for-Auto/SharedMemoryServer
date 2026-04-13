@@ -8,9 +8,7 @@ from shared_memory.database import async_get_connection, init_db, update_access
 async def test_init_db_creates_tables(temp_db):
     await init_db()
     async with aiosqlite.connect(temp_db) as conn:
-        cursor = await conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
+        cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = await cursor.fetchall()
         table_names = [t[0] for t in tables]
 

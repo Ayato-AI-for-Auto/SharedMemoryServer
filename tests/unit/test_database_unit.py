@@ -16,6 +16,7 @@ async def test_init_db_schema():
         assert "audit_logs" in tables
         assert "embedding_cache" in tables
 
+
 @pytest.mark.asyncio
 async def test_update_access_unit():
     """Unit test for update_access function logic."""

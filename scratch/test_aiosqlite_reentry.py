@@ -20,5 +20,6 @@ async def test():
     finally:
         await conn.close()
 
+
 if __name__ == "__main__":
     asyncio.run(test())

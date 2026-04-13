@@ -2,7 +2,7 @@ import json
 import os
 
 
-def list_keys_recursive(data, prefix=''):
+def list_keys_recursive(data, prefix=""):
     if isinstance(data, dict):
         for k, v in data.items():
             curr = f"{prefix}.{k}" if prefix else k
@@ -11,6 +11,7 @@ def list_keys_recursive(data, prefix=''):
     elif isinstance(data, list):
         for i, v in enumerate(data):
             list_keys_recursive(v, f"{prefix}[{i}]")
+
 
 path = os.path.expanduser("~/.gemini/settings.json")
 if os.path.exists(path):

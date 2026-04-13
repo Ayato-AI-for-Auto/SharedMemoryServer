@@ -16,11 +16,13 @@ def test_path_resolver_data_dir():
     assert data_dir is not None
     assert os.path.isdir(data_dir)
 
+
 def test_sanitize_filename_unit():
     """Unit test for sanitize_filename. Verifies path traversal protection."""
     assert sanitize_filename("test.md") == "test.md"
     assert sanitize_filename("../../etc/passwd") == "passwd.md"
     assert sanitize_filename("my file!.txt") == "my_file_.md"
+
 
 def test_mask_sensitive_data_unit():
     """Unit test for data masking."""
@@ -28,6 +30,7 @@ def test_mask_sensitive_data_unit():
     masked = mask_sensitive_data(f"My key is {api_key}")
     assert api_key not in masked
     assert "[GOOGLE_API_KEY_MASKED]" in masked
+
 
 @pytest.mark.asyncio
 async def test_global_lock_unit():

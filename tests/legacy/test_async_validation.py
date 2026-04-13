@@ -23,6 +23,7 @@ async def test_event_loop_heartbeat_under_load():
 
     heartbeat_latencies = []
     stop_heartbeat = False
+
     async def heartbeat():
         last_time = asyncio.get_event_loop().time()
         while not stop_heartbeat:
@@ -35,8 +36,7 @@ async def test_event_loop_heartbeat_under_load():
     # 重いデータ注入タスク
     async def heavy_io_task():
         entities = [
-            {"name": f"Stress_{i}", "description": "X" * 1000}
-            for i in range(500)
+            {"name": f"Stress_{i}", "description": "X" * 1000} for i in range(500)
         ]
         await save_memory_core(entities=entities)
 
@@ -52,7 +52,8 @@ async def test_event_loop_heartbeat_under_load():
     max_latency = max(heartbeat_latencies) if heartbeat_latencies else 0
     avg_latency = (
         sum(heartbeat_latencies) / len(heartbeat_latencies)
-        if heartbeat_latencies else 0
+        if heartbeat_latencies
+        else 0
     )
 
     print("\n[Async Validation Results]")
@@ -65,6 +66,7 @@ async def test_event_loop_heartbeat_under_load():
     # 基盤が完全に非同期(aiosqlite)であれば、OSのI/O待ちの間もループは回り続ける。
     assert max_latency < 200, f"Event loop blocked for too long: {max_latency:.2f}ms"
 
+
 @pytest.mark.asyncio
 async def test_concurrent_agent_limit_verification():
     """
@@ -76,11 +78,10 @@ async def test_concurrent_agent_limit_verification():
 
     async def agent_action(agent_id):
         return await save_memory_core(
-            entities=[{
-                "name": f"Concurrent_{agent_id}",
-                "description": "Testing concurrency"
-            }],
-            agent_id=f"agent_{agent_id}"
+            entities=[
+                {"name": f"Concurrent_{agent_id}", "description": "Testing concurrency"}
+            ],
+            agent_id=f"agent_{agent_id}",
         )
 
     tasks = [agent_action(i) for i in range(num_agents)]

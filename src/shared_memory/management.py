@@ -118,16 +118,23 @@ async def get_memory_health_logic():
     async with await async_get_connection() as conn:
         health = {}
         try:
-            health["entities_count"] = (await (await conn.execute(
-                "SELECT COUNT(*) FROM entities")).fetchone())[0]
-            health["relations_count"] = (await (await conn.execute(
-                "SELECT COUNT(*) FROM relations")).fetchone())[0]
-            health["observations_count"] = (await (await conn.execute(
-                "SELECT COUNT(*) FROM observations")).fetchone())[0]
-            health["bank_files_cached"] = (await (await conn.execute(
-                "SELECT COUNT(*) FROM bank_files")).fetchone())[0]
-            health["embeddings_count"] = (await (await conn.execute(
-                "SELECT COUNT(*) FROM embeddings")).fetchone())[0]
+            health["entities_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM entities")).fetchone()
+            )[0]
+            health["relations_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM relations")).fetchone()
+            )[0]
+            health["observations_count"] = (
+                await (
+                    await conn.execute("SELECT COUNT(*) FROM observations")
+                ).fetchone()
+            )[0]
+            health["bank_files_cached"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM bank_files")).fetchone()
+            )[0]
+            health["embeddings_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM embeddings")).fetchone()
+            )[0]
 
             cursor = await conn.execute(
                 "SELECT content_id, access_count, last_accessed FROM knowledge_metadata"
@@ -197,6 +204,8 @@ async def get_memory_health_logic():
             log_error("Health diagnostics failed", e)
             health["error"] = str(e)
         return health
+
+
 async def list_snapshots_logic():
     async with await async_get_connection() as conn:
         cursor = await conn.execute(

@@ -19,14 +19,17 @@ class ConfiguredConnection:
         print("Entering __aexit__")
         await self.conn.close()
 
+
 async def async_get_connection():
     return ConfiguredConnection("test.db")
+
 
 async def test():
     # This matches the pattern in our codebase
     async with await async_get_connection() as conn:
         print("Inside context manager")
         await conn.execute("SELECT 1")
+
 
 if __name__ == "__main__":
     asyncio.run(test())

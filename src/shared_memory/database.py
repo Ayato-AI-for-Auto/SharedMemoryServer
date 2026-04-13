@@ -7,7 +7,6 @@ import aiosqlite
 from shared_memory.exceptions import DatabaseError, DatabaseLockedError
 from shared_memory.utils import get_db_path, log_error
 
-
 # Global flag to track if the main database has been initialized in the current session.
 _DB_INITIALIZED = False
 
@@ -63,6 +62,7 @@ class AsyncSQLiteConnection:
     async def close_all_active(cls):
         """Force close all tracked connections (Testing helper)."""
         import copy
+
         conns = copy.copy(cls._active_connections)
         for c in conns:
             try:
@@ -73,6 +73,7 @@ class AsyncSQLiteConnection:
 
     async def __aenter__(self):
         import sqlite3
+
         try:
             self.conn = await aiosqlite.connect(self.db_path, timeout=self.timeout)
             self.conn.row_factory = aiosqlite.Row
@@ -82,11 +83,11 @@ class AsyncSQLiteConnection:
                 await self.conn.execute("PRAGMA foreign_keys = ON")
             await self.conn.execute("PRAGMA journal_mode = WAL")
             await self.conn.execute("PRAGMA synchronous = NORMAL")
-            
+
             # Track connection for cleanup
             if "PYTEST_CURRENT_TEST" in os.environ:
                 self._active_connections.add(self.conn)
-                
+
             return self.conn
         except (aiosqlite.Error, sqlite3.Error) as e:
             log_error(f"Failed to connect to database at {self.db_path}", e)
@@ -109,8 +110,8 @@ class AsyncSQLiteConnection:
 
 async def _async_get_connection_raw(db_path: str, is_thoughts: bool = False):
     """
-    INTERNAL USE ONLY. Returns a connection wrapper without triggering lazy initialization.
-    Prevents infinite recursion during 'init_db'.
+    INTERNAL USE ONLY. Returns a connection wrapper without triggering
+    lazy initialization. Prevents infinite recursion during 'init_db'.
     """
     return AsyncSQLiteConnection(db_path, is_thoughts=is_thoughts)
 
@@ -132,6 +133,7 @@ async def async_get_thoughts_connection():
     """
     from shared_memory.thought_logic import init_thoughts_db
     from shared_memory.utils import get_thoughts_db_path
+
     await init_thoughts_db()
     return await _async_get_connection_raw(get_thoughts_db_path(), is_thoughts=True)
 
@@ -354,9 +356,14 @@ async def update_access(content_id: str, conn=None):
             (content_id,),
         )
 
+
 @retry_on_db_lock()
 async def log_search_stat(
-    query: str, results_count: int, hit_ids: list[str] = None, avg_sim: float = 0.0, conn=None
+    query: str,
+    results_count: int,
+    hit_ids: list[str] = None,
+    avg_sim: float = 0.0,
+    conn=None,
 ):
     """
     Logs the result count of a search for hit rate and knowledge age calculation.
@@ -364,6 +371,7 @@ async def log_search_stat(
     # Guard: Ensure DB is initialized before logging stats
     await init_db()
     import json
+
     hit_ids_json = json.dumps(hit_ids or [])
 
     async def _execute(c):

@@ -11,7 +11,7 @@ else:
     cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = cur.fetchall()
     print(f"Tables: {tables}")
-    if ('thought_history',) in tables:
+    if ("thought_history",) in tables:
         cur.execute("SELECT COUNT(*) FROM thought_history")
         print(f"Thought history count: {cur.fetchone()[0]}")
     conn.close()

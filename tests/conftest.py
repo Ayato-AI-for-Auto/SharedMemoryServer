@@ -4,6 +4,7 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from tests.unit.fake_client import FakeGeminiClient
 
 
@@ -54,13 +55,18 @@ def mock_env(temp_db, temp_bank, temp_home):
     with patch.dict(os.environ, env_vars):
         yield
 
+
 @pytest.fixture(scope="session", autouse=True)
 def mock_gemini_globally():
     """Globally mocks Gemini API to prevent network calls and hangs during tests."""
     fake_client = FakeGeminiClient()
     with patch("google.genai.Client", return_value=fake_client):
-        with patch("shared_memory.embeddings.get_gemini_client", return_value=fake_client):
-            with patch("shared_memory.graph.get_gemini_client", return_value=fake_client):
+        with patch(
+            "shared_memory.embeddings.get_gemini_client", return_value=fake_client
+        ):
+            with patch(
+                "shared_memory.graph.get_gemini_client", return_value=fake_client
+            ):
                 yield fake_client
 
 
@@ -110,8 +116,7 @@ async def cleanup_tasks():
     # In CI, we prioritize finishing the job over deep cleanup if it hangs.
     try:
         await asyncio.wait_for(
-            asyncio.gather(*tasks, return_exceptions=True),
-            timeout=1.0
+            asyncio.gather(*tasks, return_exceptions=True), timeout=1.0
         )
     except (TimeoutError, Exception):
         # Force progress even if cleanup hangs
@@ -161,9 +166,11 @@ def mock_gemini():
 @pytest.fixture
 async def async_db(temp_db):
     from shared_memory.database import async_get_connection, init_db
+
     await init_db()
     async with await async_get_connection() as conn:
         yield conn
+
 
 def pytest_sessionfinish(session, exitstatus):
     """
@@ -171,6 +178,7 @@ def pytest_sessionfinish(session, exitstatus):
     This ensures we don't accidentally report 'success' if tests failed.
     """
     session.config._ci_exitstatus = exitstatus
+
 
 def pytest_unconfigure(config):
     """
@@ -181,6 +189,7 @@ def pytest_unconfigure(config):
     exitstatus = getattr(config, "_ci_exitstatus", 0)
     if os.environ.get("GITHUB_ACTIONS") == "true":
         import sys
+
         print(
             f"\n[pytest] Tests finished with status {exitstatus}. Forcing os._exit.",
             flush=True,

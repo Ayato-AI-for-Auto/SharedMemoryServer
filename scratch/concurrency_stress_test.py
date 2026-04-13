@@ -5,8 +5,9 @@ import sys
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from shared_memory import database, thought_logic, logic
+from shared_memory import database, logic, thought_logic
 from shared_memory.utils import get_db_path
+
 
 async def simultaneous_call(call_id):
     """一つの並列タスクとして検索を実行"""
@@ -17,15 +18,16 @@ async def simultaneous_call(call_id):
     except Exception as e:
         return f"Task {call_id}: FAILED with {type(e).__name__}: {e}"
 
+
 async def concurrency_test():
     db_path = get_db_path()
-    
+
     # 1. 状態を最悪にする (DB削除 + フラグリセット)
     if os.path.exists(db_path):
         os.remove(db_path)
     database._DB_INITIALIZED = False
     thought_logic._THOUGHTS_INITIALIZED = False
-    
+
     print("--- CONCURRENCY ATTACK START ---")
     print("Scenario: 50 tasks simultaneously trying to initialize an empty database.")
 
@@ -36,7 +38,7 @@ async def concurrency_test():
     # 3. 結果の集計
     success_count = sum(1 for r in results if "Success" in r)
     failure_count = len(results) - success_count
-    
+
     print("\n--- TEST RESULTS ---")
     print(f"Total Tasks: {len(results)}")
     print(f"Successes: {success_count}")
@@ -48,7 +50,11 @@ async def concurrency_test():
             if "FAILED" in r:
                 print(f"  {r}")
     else:
-        print("\nPerfect! The system handled simultaneous initialization without a single error.")
+        print(
+            "\nPerfect! The system handled simultaneous initialization "
+            "without a single error."
+        )
+
 
 if __name__ == "__main__":
     asyncio.run(concurrency_test())

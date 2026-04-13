@@ -80,7 +80,7 @@ async def save_entities(
     entities: list[dict[str, Any]],
     agent_id: str,
     conn,
-    precomputed_vectors: list[list[float]] | None = None
+    precomputed_vectors: list[list[float]] | None = None,
 ):
     """
     Saves entities to the database.
@@ -207,7 +207,7 @@ async def save_observations(
     observations: list[dict[str, Any]],
     agent_id: str,
     conn,
-    precomputed_conflicts: list[dict[str, Any]] | None = None
+    precomputed_conflicts: list[dict[str, Any]] | None = None,
 ):
     """
     Saves observations.
@@ -231,22 +231,18 @@ async def save_observations(
         if precomputed_conflicts is not None:
             # Match conflict from precomputed results if available
             conflict_info = next(
-                (c for c in precomputed_conflicts if c["index"] == i),
-                None
+                (c for c in precomputed_conflicts if c["index"] == i), None
             )
             if conflict_info and conflict_info.get("is_conflict"):
-                conflicts_to_report.append({
-                    "entity": entity_name,
-                    "reason": conflict_info.get("reason")
-                })
+                conflicts_to_report.append(
+                    {"entity": entity_name, "reason": conflict_info.get("reason")}
+                )
         else:
             is_conflict, reason = await check_conflict(
                 entity_name, content, agent_id, conn=conn
             )
             if is_conflict:
-                conflicts_to_report.append({
-                    "entity": entity_name, "reason": reason
-                })
+                conflicts_to_report.append({"entity": entity_name, "reason": reason})
 
         await conn.execute(
             "INSERT INTO observations (entity_name, content, created_by) "
@@ -266,7 +262,7 @@ async def save_observations(
                 entity_name,
                 "INSERT",
                 json.dumps({"content": content}),
-                agent_id
+                agent_id,
             ),
         )
         success_count += 1

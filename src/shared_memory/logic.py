@@ -48,10 +48,9 @@ async def save_memory_core(
 
     bank_file_items = []
     for filename, content in bank_files.items():
-        bank_file_items.append({
-            "filename": filename,
-            "text": f"File: {filename}\nContent: {content}"
-        })
+        bank_file_items.append(
+            {"filename": filename, "text": f"File: {filename}\nContent: {content}"}
+        )
 
     bank_texts = [item["text"] for item in bank_file_items]
     all_embedding_texts = entity_texts + bank_texts
@@ -61,14 +60,14 @@ async def save_memory_core(
     if all_embedding_texts:
         tasks.append(compute_embeddings_bulk(all_embedding_texts))
     else:
-        tasks.append(asyncio.sleep(0, result=[])) # Dummy task
+        tasks.append(asyncio.sleep(0, result=[]))  # Dummy task
 
     for obs in observations:
-        tasks.append(graph.check_conflict(
-            obs.get("entity_name", ""),
-            obs.get("content", ""),
-            agent_id
-        ))
+        tasks.append(
+            graph.check_conflict(
+                obs.get("entity_name", ""), obs.get("content", ""), agent_id
+            )
+        )
 
     # 1.3 Execute Parallel AI Calls
     logger.debug("Phase 1 (AI) GATHERING")
@@ -79,17 +78,15 @@ async def save_memory_core(
     raw_conflict_results = ai_results[1:]
 
     # 1.4 Distribute Results
-    precomputed_entity_vectors = all_vectors[:len(entity_texts)]
-    precomputed_bank_vectors = all_vectors[len(entity_texts):]
+    precomputed_entity_vectors = all_vectors[: len(entity_texts)]
+    precomputed_bank_vectors = all_vectors[len(entity_texts) :]
 
     precomputed_observations_conflicts = []
     for i, res in enumerate(raw_conflict_results):
         is_conflict, reason = res
-        precomputed_observations_conflicts.append({
-            "index": i,
-            "is_conflict": is_conflict,
-            "reason": reason
-        })
+        precomputed_observations_conflicts.append(
+            {"index": i, "is_conflict": is_conflict, "reason": reason}
+        )
 
     # --- Phase 2: Rapid DB Write ---
     logger.debug("Phase 2 (DB) START")
@@ -98,12 +95,14 @@ async def save_memory_core(
         results = []
         try:
             if entities:
-                results.append(await graph.save_entities(
-                    entities,
-                    agent_id,
-                    conn,
-                    precomputed_vectors=precomputed_entity_vectors
-                ))
+                results.append(
+                    await graph.save_entities(
+                        entities,
+                        agent_id,
+                        conn,
+                        precomputed_vectors=precomputed_entity_vectors,
+                    )
+                )
             if relations:
                 results.append(await graph.save_relations(relations, agent_id, conn))
             if observations:
@@ -111,20 +110,20 @@ async def save_memory_core(
                     observations,
                     agent_id,
                     conn,
-                    precomputed_conflicts=precomputed_observations_conflicts
+                    precomputed_conflicts=precomputed_observations_conflicts,
                 )
                 results.append(res)
                 if conflicts:
-                    results.append(
-                        f"CONFLICTS DETECTED: {json.dumps(conflicts)}"
-                    )
+                    results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
             if bank_files:
-                results.append(await bank.save_bank_files(
-                    bank_files,
-                    agent_id,
-                    conn,
-                    precomputed_vectors=precomputed_bank_vectors
-                ))
+                results.append(
+                    await bank.save_bank_files(
+                        bank_files,
+                        agent_id,
+                        conn,
+                        precomputed_vectors=precomputed_bank_vectors,
+                    )
+                )
 
             await conn.commit()
         except aiosqlite.Error as e:

@@ -23,35 +23,33 @@ async def test_complete_knowledge_lifecycle_system():
         {
             "name": "AuthModule",
             "entity_type": "component",
-            "description": "Handles OIDC flows"
+            "description": "Handles OIDC flows",
         },
         {
             "name": "Database",
             "entity_type": "infrastructure",
-            "description": "Managed PostgreSQL"
-        }
+            "description": "Managed PostgreSQL",
+        },
     ]
     relations = [
         {"subject": "AuthModule", "object": "Database", "predicate": "writes_to"}
     ]
-    bank_files = {
-        "security_policy.md": "# Security\nAll connections must use TLS."
-    }
+    bank_files = {"security_policy.md": "# Security\nAll connections must use TLS."}
 
     save_result = await save_memory_core(
         entities=entities,
         relations=relations,
         bank_files=bank_files,
-        agent_id="test_system_agent"
+        agent_id="test_system_agent",
     )
     assert "Saved 2 entities" in save_result
     assert "Saved 1 relations" in save_result
 
     # 2. Simulate workflow (3 hits, 1 miss)
-    await read_memory_core(query="AuthModule") # Hit 1
-    await read_memory_core(query="TLS")        # Hit 2 (Bank)
-    await read_memory_core(query="Database")   # Hit 3
-    await read_memory_core(query="ImaginaryFeature") # Miss 1
+    await read_memory_core(query="AuthModule")  # Hit 1
+    await read_memory_core(query="TLS")  # Hit 2 (Bank)
+    await read_memory_core(query="Database")  # Hit 3
+    await read_memory_core(query="ImaginaryFeature")  # Miss 1
 
     # 3. Request Value Report (Simulate Admin Tool Call)
     # 3.1 JSON Format (for Dashboards)

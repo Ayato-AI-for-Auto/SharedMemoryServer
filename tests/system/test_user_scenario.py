@@ -25,7 +25,7 @@ async def test_end_to_end_user_scenario(mock_gemini):
         thought_number=1,
         total_thoughts=2,
         next_thought_needed=True,
-        session_id="scenario_session"
+        session_id="scenario_session",
     )
 
     # Step 2: Final Conclusion (Triggers Distillation)
@@ -34,7 +34,7 @@ async def test_end_to_end_user_scenario(mock_gemini):
         thought_number=2,
         total_thoughts=2,
         next_thought_needed=False,
-        session_id="scenario_session"
+        session_id="scenario_session",
     )
 
     # 3. Knowledge Retrieval

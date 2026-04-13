@@ -13,6 +13,7 @@ mcp = FastMCP("SharedMemoryServer")
 # LIFESPAN & INITIALIZATION
 # ==========================================
 
+
 @mcp.lifespan()
 async def lifespan(mcp_instance: FastMCP):
     """
@@ -128,6 +129,7 @@ async def get_insights(format: str = "markdown"):
     ビジネス上のROIやトークン削減量、知識の再利用率を確認するために使用します。
     """
     from shared_memory.insights import InsightEngine
+
     metrics = await InsightEngine.get_summary_metrics()
     if format == "json":
         return metrics

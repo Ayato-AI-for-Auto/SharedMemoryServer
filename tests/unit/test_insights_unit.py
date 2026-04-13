@@ -61,14 +61,14 @@ async def test_generate_report_markdown_unit():
             "knowledge_maturity": {
                 "intra_session": 5,
                 "short_term": 10,
-                "long_term": 5
+                "long_term": 5,
             },
-            "avg_thoughts_per_session": 4.5
+            "avg_thoughts_per_session": 4.5,
         },
         "efficiency_indicators": {
             "reuse_multiplier": 5.0,
-            "knowledge_availability_ratio": 80.0
-        }
+            "knowledge_availability_ratio": 80.0,
+        },
     }
 
     report = InsightEngine.generate_report_markdown(metrics_data)
@@ -81,6 +81,7 @@ async def test_generate_report_markdown_unit():
     assert "5.0x" in report
     assert "75.0%" in report
     assert "観測事実" in report
+
 
 @pytest.mark.asyncio
 async def test_generate_report_markdown():
@@ -102,14 +103,14 @@ async def test_generate_report_markdown():
             "knowledge_maturity": {
                 "intra_session": 5,
                 "short_term": 10,
-                "long_term": 2
+                "long_term": 2,
             },
-            "avg_thoughts_per_session": 15.0
+            "avg_thoughts_per_session": 15.0,
         },
         "efficiency_indicators": {
             "reuse_multiplier": 5.0,
             "knowledge_availability_ratio": 75.0,
-        }
+        },
     }
 
     report = InsightEngine.generate_report_markdown(dummy_metrics)
@@ -119,4 +120,4 @@ async def test_generate_report_markdown():
     assert "85.0%" in report
     assert "活用係数 (Reuse Multiplier)" in report
     assert "5.0x" in report
-    assert "XXドル" not in report # Should not contain speculative monetary values
+    assert "XXドル" not in report  # Should not contain speculative monetary values

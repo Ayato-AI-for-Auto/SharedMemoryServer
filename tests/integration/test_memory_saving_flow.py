@@ -18,9 +18,7 @@ async def test_save_memory_integration_flow(mock_gemini):
     ]
 
     result = await save_memory_core(
-        entities=entities,
-        observations=observations,
-        agent_id="test_agent"
+        entities=entities, observations=observations, agent_id="test_agent"
     )
 
     # 2. Verify results
@@ -31,7 +29,7 @@ async def test_save_memory_integration_flow(mock_gemini):
     async with await async_get_connection() as conn:
         cursor = await conn.execute(
             "SELECT entity_type, description FROM entities WHERE name = ?",
-            ("Integration Entity",)
+            ("Integration Entity",),
         )
         row = await cursor.fetchone()
         assert row is not None

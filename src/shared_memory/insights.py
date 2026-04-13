@@ -4,8 +4,8 @@ from typing import Any
 from shared_memory.database import (
     async_get_connection,
     async_get_thoughts_connection,
-    retry_on_db_lock,
     init_db,
+    retry_on_db_lock,
 )
 from shared_memory.thought_logic import init_thoughts_db
 
@@ -71,8 +71,8 @@ class InsightEngine:
             # 熟成度分類 (Knowledge Maturity Distribution)
             maturity = {
                 "intra_session": 0,  # 1時間以内 (Working Memory)
-                "short_term": 0,    # 1〜24時間 (Next Day Transfer)
-                "long_term": 0,     # 24時間以上 (Strategic Asset)
+                "short_term": 0,  # 1〜24時間 (Next Day Transfer)
+                "long_term": 0,  # 24時間以上 (Strategic Asset)
             }
 
             if total_hits > 0:
@@ -122,9 +122,7 @@ class InsightEngine:
 
         async with await async_get_thoughts_connection() as conn_t:
             # 4. 推論ログの観測 (Reasoning Observation)
-            cursor = await conn_t.execute(
-                "SELECT COUNT(*) FROM thought_history"
-            )
+            cursor = await conn_t.execute("SELECT COUNT(*) FROM thought_history")
             t_count = (await cursor.fetchone())[0]
             cursor = await conn_t.execute(
                 "SELECT COUNT(DISTINCT session_id) FROM thought_history"
@@ -169,27 +167,27 @@ Generated at: {metrics_data["timestamp"]}
 単なる量ではなく、過去の蓄積がいかに時間に耐えて活用されているかを示す指標です。
 
 - **知の移転 (Cross-Time Transfer)**:
-  > **長期 (24時間超)**: `{f['knowledge_maturity']['long_term']} hits`
-  > **中期 (1〜24時間)**: `{f['knowledge_maturity']['short_term']} hits`
+  > **長期 (24時間超)**: `{f["knowledge_maturity"]["long_term"]} hits`
+  > **中期 (1〜24時間)**: `{f["knowledge_maturity"]["short_term"]} hits`
   > [!TIP]
   > 長期ヒットは、過去の経験が現在の推論を助けている「資産」としての証拠です。
 
-- **検索精度 (Search Precision)**: `{f['avg_search_precision']} score`
+- **検索精度 (Search Precision)**: `{f["avg_search_precision"]} score`
   > [!NOTE]
   > ベクトル検索の平均確信度。核心を突いた情報提供ができているかを計測します。
 
 ## 2. 検索と再利用の実績 (Utilization & Performance)
-- **検索ヒット率 (Hit Rate)**: `{f['search_hit_rate_percent']}%`
-  (Total: {f['total_search_queries']} queries)
-- **活用係数 (Reuse Multiplier)**: `{i['reuse_multiplier']}x`
+- **検索ヒット率 (Hit Rate)**: `{f["search_hit_rate_percent"]}%`
+  (Total: {f["total_search_queries"]} queries)
+- **活用係数 (Reuse Multiplier)**: `{i["reuse_multiplier"]}x`
 
 ## 3. 知識の蓄積状況 (Inventory Facts)
-- **エンティティ数**: `{f['stored_entities']} items`
-- **知識密度 (Graph Density)**: `{f['knowledge_graph_density_percent']}%`
-- **バンクファイル数**: `{f['stored_bank_files']} files`
+- **エンティティ数**: `{f["stored_entities"]} items`
+- **知識密度 (Graph Density)**: `{f["knowledge_graph_density_percent"]}%`
+- **バンクファイル数**: `{f["stored_bank_files"]} files`
 
 ## 4. 推論プロセスの観測 (Reasoning Insights)
-- **1セッションあたりの平均思考手順**: `{f['avg_thoughts_per_session']} steps`
+- **1セッションあたりの平均思考手順**: `{f["avg_thoughts_per_session"]} steps`
 
 ---
 **本レポートの性質について**:

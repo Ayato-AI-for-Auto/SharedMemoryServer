@@ -1,5 +1,5 @@
 import asyncio
-import json
+import logging
 import math
 import os
 import re
@@ -17,8 +17,6 @@ ENABLE_STRUCTURED_LOGGING = (
 )
 
 
-import logging
-
 # Basic configuration for standard logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,11 +24,13 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+
 def get_logger(name: str) -> logging.Logger:
     """
     Returns a configured logger instance for the given name.
     """
     return logging.getLogger(f"shared_memory.{name}")
+
 
 def log_error(msg: str, e: Exception = None, extra: dict[str, Any] = None):
     """
@@ -41,6 +41,7 @@ def log_error(msg: str, e: Exception = None, extra: dict[str, Any] = None):
         logger.error(f"{msg}: {e}", extra=extra)
     else:
         logger.error(msg, extra=extra)
+
 
 def log_info(msg: str, extra: dict[str, Any] = None):
     """
@@ -256,6 +257,7 @@ class GlobalLock:
     Expert-level cross-process locking using a lockfile.
     Placed in the project data directory to avoid pollution.
     """
+
     # Intra-process lock cache to minimize file system contention
     _locks: dict[str, asyncio.Lock] = {}
 

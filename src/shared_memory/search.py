@@ -1,7 +1,6 @@
 import datetime
 import json
 import re
-import sys
 
 from shared_memory.bank import read_bank_data
 from shared_memory.database import (
@@ -10,7 +9,6 @@ from shared_memory.database import (
     log_search_stat,
 )
 from shared_memory.embeddings import (
-    EMBEDDING_MODEL,
     compute_embedding,
     get_gemini_client,
 )
@@ -112,7 +110,9 @@ async def perform_search(query: str, limit: int = 10):
     async with await async_get_connection() as conn:
         logger.debug(f"DB Connection ACQUIRED query={query}")
         try:
-            logger.debug(f"compute_embedding START text={query[:20]}... reuse_conn=True")
+            logger.debug(
+                f"compute_embedding START text={query[:20]}... reuse_conn=True"
+            )
             query_vector = await compute_embedding(query, conn=conn)
             if not query_vector:
                 # Fallback to simple keyword search
@@ -168,7 +168,9 @@ async def perform_search(query: str, limit: int = 10):
             hit_count = len(graph_data["entities"]) + len(bank_data)
             avg_sim = sum(r[1] for r in top_results) / max(1, hit_count)
             hit_ids = top_cids
-            await log_search_stat(query, hit_count, hit_ids=hit_ids, avg_sim=avg_sim, conn=conn)
+            await log_search_stat(
+                query, hit_count, hit_ids=hit_ids, avg_sim=avg_sim, conn=conn
+            )
 
             logger.info(f"perform_search COMPLETE query={query}")
             return graph_data, bank_data
@@ -194,6 +196,7 @@ async def get_graph_data_by_cids(cids: list[str], conn):
     # Track usage (Reuse Fact)
     for cid in cids:
         from shared_memory.database import update_access
+
         await update_access(cid, conn=conn)
 
     matched_names = [r[0] for r in entities]
@@ -230,6 +233,7 @@ async def get_bank_data_by_cids(cids: list[str], conn):
     # Track usage (Reuse Fact)
     for cid in cids:
         from shared_memory.database import update_access
+
         await update_access(cid, conn=conn)
 
     return {f[0]: f[1] for f in files}
