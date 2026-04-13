@@ -26,7 +26,8 @@ jobs:
       - name: Install dependencies
         run: |
           if [ ! -d ".venv" ]; then uv venv; fi
-          uv pip install -e . --extra test
+          ls -la
+          uv pip install -e "./[test]"
           uv pip install ruff pytest-timeout
       - name: Lint
         run: |
@@ -59,6 +60,7 @@ jobs:
       - name: Install semantic-release
         run: |
           if [ ! -d ".venv" ]; then uv venv; fi
+          ls -la
           uv pip install python-semantic-release
       - name: Python Semantic Release
         id: semantic
@@ -87,8 +89,10 @@ jobs:
           python-version: '3.11'
           enable-cache: true
       - name: Install dependencies
+        shell: bash
         run: |
           if [ ! -d ".venv" ]; then uv venv; fi
+          ls -la
           uv pip install -e .
           uv pip install pyinstaller
       - name: Build with PyInstaller
