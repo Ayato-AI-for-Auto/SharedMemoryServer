@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import random
 
@@ -320,7 +321,16 @@ async def init_db(force: bool = False):
         )
 
         await conn.commit()
-        _DB_INITIALIZED = True
+
+        # Final Verification: Ensure critical tables exist before marking as initialized
+        cursor = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='entities'"
+        )
+        if not await cursor.fetchone():
+            _DB_INITIALIZED = False
+            log_error("Critical failure: 'entities' table missing after init_db.")
+        else:
+            _DB_INITIALIZED = True
 
 
 @retry_on_db_lock()
@@ -374,7 +384,6 @@ async def log_search_stat(
     """
     # Guard: Ensure DB is initialized before logging stats
     await init_db()
-    import json
 
     hit_ids_json = json.dumps(hit_ids or [])
 

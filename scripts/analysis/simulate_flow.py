@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import sys
 
@@ -7,8 +6,9 @@ import sys
 project_root = os.getcwd()
 sys.path.insert(0, os.path.join(project_root, "src"))
 
-from shared_memory.thought_logic import process_thought_core
-from shared_memory.logic import save_memory_core, read_memory_core
+from shared_memory.logic import read_memory_core, save_memory_core  # noqa: E402
+from shared_memory.thought_logic import process_thought_core  # noqa: E402
+
 
 async def simulate_behavior():
     session_id = f"analysis_demo_{os.urandom(4).hex()}"
@@ -18,7 +18,10 @@ async def simulate_behavior():
     # This will trigger a search and record metadata
     print("\n[Phase 1] Thinking about 'Anomaly Detection'...")
     await process_thought_core(
-        thought="I suspect there is a correlation between low liquidity and sudden price spikes in JPY pairs. Checking past knowledge.",
+        thought=(
+            "I suspect there is a correlation between low liquidity "
+            "and sudden price spikes in JPY pairs. Checking past knowledge."
+        ),
         thought_number=1,
         total_thoughts=2,
         next_thought_needed=True,
@@ -36,8 +39,8 @@ async def simulate_behavior():
     # Phase 3: Retrieval (Verification)
     # This will record search stats
     print("\n[Phase 3] Retrieving the saved observation...")
-    results = await read_memory_core(query="Tell me about JPY volatility spikes")
-    
+    _ = await read_memory_core(query="Tell me about JPY volatility spikes")
+
     print("\nSimulation Complete. Analyzing traces...")
 
 if __name__ == "__main__":
