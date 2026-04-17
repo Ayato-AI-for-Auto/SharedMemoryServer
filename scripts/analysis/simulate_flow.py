@@ -32,7 +32,15 @@ async def simulate_behavior():
     # This will record vector and conflict metadata
     print("\n[Phase 2] Saving fact about 'JPY Volatility'...")
     await save_memory_core(
-        entities=[{"name": "JPY Volatility Spike", "entity_type": "Observation", "description": "Detecting 2% move within 5 minutes in USD/JPY."}],
+        entities=[
+            {
+                "name": "JPY Volatility Spike",
+                "entity_type": "Observation",
+                "description": (
+                    "Detecting 2% move within 5 minutes in USD/JPY."
+                ),
+            }
+        ],
         agent_id="analysis_agent"
     )
 
