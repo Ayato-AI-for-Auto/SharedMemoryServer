@@ -6,7 +6,7 @@ from shared_memory.database import async_get_connection, init_db, update_access
 
 @pytest.mark.asyncio
 async def test_init_db_creates_tables(temp_db):
-    await init_db()
+    await init_db(force=True)
     async with aiosqlite.connect(temp_db) as conn:
         cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = await cursor.fetchall()
@@ -20,7 +20,7 @@ async def test_init_db_creates_tables(temp_db):
 
 @pytest.mark.asyncio
 async def test_update_access_and_stability(temp_db):
-    await init_db()
+    await init_db(force=True)
     # Insert a mock entity first (FK constraint)
     async with await async_get_connection() as conn:
         await conn.execute(
@@ -72,7 +72,7 @@ async def test_migration_from_partial_schema(temp_db):
         await conn.commit()
 
     # 2. Run init_db()
-    await init_db()
+    await init_db(force=True)
 
     # 3. Verify all columns are now present
     async with aiosqlite.connect(temp_db) as conn:
@@ -119,7 +119,7 @@ async def test_migration_relations_partial(temp_db):
         )
         await conn.commit()
 
-    await init_db()
+    await init_db(force=True)
 
     async with aiosqlite.connect(temp_db) as conn:
         cursor = await conn.execute("PRAGMA table_info(relations)")

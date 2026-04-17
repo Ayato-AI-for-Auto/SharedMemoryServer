@@ -299,7 +299,8 @@ class GlobalLock:
                         os.remove(self.lock_path)
                         log_info(f"Removed stale lock file: {self.lock_path}")
                 except FileNotFoundError:
-                    pass
+                    # Stale lock was already removed by another process, which is fine.
+                    log_info(f"Stale lock {self.lock_path} was already removed by another process.")
                 except Exception as e:
                     log_error(f"Failed to remove stale lock {self.lock_path}", e)
                 await asyncio.sleep(0.1)
@@ -375,10 +376,14 @@ def calculate_importance(access_count: int, last_accessed_iso: str) -> float:
     # 2. Recency score (Exponential decay)
     try:
         last_accessed = datetime.fromisoformat(last_accessed_iso)
+        if last_accessed.tzinfo is None:
+            last_accessed = last_accessed.replace(tzinfo=UTC)
+            
         seconds_since = (datetime.now(UTC) - last_accessed).total_seconds()
         # Decay half-life: 24 hours (86400 seconds)
         recency_score = math.exp(-seconds_since / 86400.0)
-    except Exception:
+    except Exception as e:
+        log_error(f"Failed to calculate recency score for {last_accessed_iso}", e)
         recency_score = 0.5
 
     return (freq_score * 0.4) + (recency_score * 0.6)

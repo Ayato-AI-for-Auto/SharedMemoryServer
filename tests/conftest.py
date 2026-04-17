@@ -56,9 +56,13 @@ def mock_env(temp_db, temp_bank, temp_home):
         yield
 
 
-@pytest.fixture(scope="session", autouse=True)
-def mock_gemini_globally():
+@pytest.fixture(autouse=True)
+def mock_gemini_globally(request):
     """Globally mocks Gemini API to prevent network calls and hangs during tests."""
+    if "no_global_mock" in request.keywords:
+        yield None
+        return
+        
     fake_client = FakeGeminiClient()
     with patch("google.genai.Client", return_value=fake_client):
         with patch(
@@ -124,7 +128,11 @@ async def cleanup_tasks():
 
 
 @pytest.fixture(autouse=True)
-def mock_gemini():
+def mock_gemini(request):
+    if "no_global_mock" in request.keywords:
+        yield None
+        return
+
     patches = [
         patch("shared_memory.embeddings.get_gemini_client"),
         patch("shared_memory.search.get_gemini_client"),

@@ -6,6 +6,7 @@ from typing import Any
 import aiosqlite
 
 from shared_memory.database import (
+    _add_column_if_missing,
     async_get_thoughts_connection,
     retry_on_db_lock,
 )
@@ -53,13 +54,10 @@ async def init_thoughts_db(force: bool = False):
             )
         """)
         # Migration for existing databases
-        try:
-            await conn.execute(
-                "ALTER TABLE thought_history ADD COLUMN distilled BOOLEAN DEFAULT 0"
-            )
-        except aiosqlite.OperationalError:
-            # Column already exists
-            pass
+        cursor = await conn.cursor()
+        await _add_column_if_missing(
+            cursor, "thought_history", "distilled BOOLEAN DEFAULT 0"
+        )
 
         # Indices for performance and efficient sequence lookups
         await conn.execute(

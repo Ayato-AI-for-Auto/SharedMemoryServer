@@ -67,8 +67,8 @@ class AsyncSQLiteConnection:
         for c in conns:
             try:
                 await c.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log_error("Failed to force close a connection during cleanup", e)
         cls._active_connections.clear()
 
     async def __aenter__(self):

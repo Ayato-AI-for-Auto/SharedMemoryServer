@@ -78,7 +78,7 @@ def get_gemini_client() -> genai.Client | None:
                 "GEMINI_API_KEY"
             )
         except ImportError:
-            pass
+            log_info("python-dotenv not found, skipping .env loading")
         except Exception as e:
             log_error("Error loading .env file", e)
 
