@@ -2,6 +2,49 @@
 
 <!-- version list -->
 
+## v1.4.0 (2026-04-17)
+
+### Chores
+
+- Archive legacy tests and scratch scripts while initializing database and documentation structures
+  ([`1f20440`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/1f204405009883f127a21015cfcccbe8624f4aba))
+
+### Documentation
+
+- Add design philosophy documentation for SharedMemoryServer
+  ([`22ac76b`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/22ac76b261bc9a6e3f1e362bf3e0972078e7f9fe))
+
+### Features
+
+- Add utility scripts for database inspection, knowledge verification, legacy data migration, and
+  trace visualization
+  ([`d160066`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/d1600664e6ff208c9f189f7211e0d6a59f941526))
+
+- Implement core database schema, logic modules, and comprehensive test suite for shared memory
+  management
+  ([`b479485`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/b47948598ad8b658ea94afb3caa31f280da3cf13))
+
+- Implement Gemini-based text embedding generation with persistent caching and add path resolution
+  utilities
+  ([`612614a`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/612614a33432e9fbccf1064484e0eb2b284a8984))
+
+- Implement graph-based entity management with conflict detection and add diagnostic trace/rescue
+  tools
+  ([`e5dd753`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/e5dd7537cde2c730ae2b5e77b714bab6a7137382))
+
+- Implement graph-based knowledge management with conflict detection and audit logging
+  ([`433e2bd`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/433e2bd20387d81115d194dee53f7c7c72c9ec99))
+
+- Implement keyword and hybrid search logic with verification script
+  ([`6bb2842`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/6bb2842eecdf305fff06bb3752ea2afb7649868a))
+
+### Testing
+
+- Add comprehensive integration, system, and unit test suites for memory workflows, search logic,
+  and fault resilience.
+  ([`659285e`](https://github.com/Ayato-AI-for-Auto/SharedMemoryServer/commit/659285eabd44524c8b94ce8fe5dfc51313cd7116))
+
+
 ## v1.3.0 (2026-04-13)
 
 ### Bug Fixes
