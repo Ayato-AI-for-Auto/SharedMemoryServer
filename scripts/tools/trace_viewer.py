@@ -1,14 +1,14 @@
 import asyncio
-import json
 import os
-from datetime import datetime
-
 import sys
+
 project_root = os.getcwd()
 sys.path.insert(0, os.path.join(project_root, "src"))
 
 import aiosqlite
+
 from shared_memory.utils import get_db_path, get_thoughts_db_path
+
 
 async def view_trace():
     db_knowledge = get_db_path()
@@ -49,7 +49,7 @@ async def view_trace():
     for item in all_trace[:30]:
         ts = item["timestamp"]
         source = item["source"]
-        
+
         if source == "THOUGHT":
             sid = item["session_id"]
             num = item["thought_number"]
@@ -66,7 +66,7 @@ async def view_trace():
             print(f"[{ts}] [AUDIT  ] {action} on {tbl}:{cid}")
             if meta:
                 print(f"    -> Meta: {meta}")
-    
+
     print("=" * 60)
 
 if __name__ == "__main__":

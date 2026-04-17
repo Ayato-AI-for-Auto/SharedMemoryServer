@@ -8,6 +8,7 @@ sys.path.append(os.path.join(os.getcwd(), "src"))
 from shared_memory import logic, thought_logic
 from shared_memory.database import init_db
 
+
 async def verify():
     print("Initializing databases...")
     await init_db()

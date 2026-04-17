@@ -1,16 +1,16 @@
-import sqlite3
-import os
-import json
 import asyncio
-from datetime import datetime
+import json
+import os
+import sqlite3
 
 # To import SharedMemoryServer logic
 import sys
+
 project_root = os.getcwd()
 sys.path.insert(0, os.path.join(project_root, "src"))
 
-from shared_memory.utils import get_db_path, log_info, log_error, PathResolver
-from shared_memory.database import init_db, async_get_connection
+from shared_memory.database import async_get_connection, init_db
+
 
 async def rescue_data():
     legacy_db = os.path.join(project_root, "archive", "legacy_db", "shared_memory.db")
@@ -36,7 +36,7 @@ async def rescue_data():
                 e_dict = dict(e)
                 # Audit log for the rescue action
                 meta = json.dumps({"source": "legacy_rescue", "original_data": e_dict})
-                
+
                 await conn_new.execute(
                     "INSERT OR IGNORE INTO entities (name, entity_type, description, importance, updated_by) "
                     "VALUES (?, ?, ?, ?, ?)",
@@ -48,7 +48,7 @@ async def rescue_data():
                     ("entities", e_dict["name"], "RESCUE", json.dumps(e_dict), "rescue_script", meta)
                 )
             await conn_new.commit()
-            print(f"Entities merged into active DB.")
+            print("Entities merged into active DB.")
 
     except Exception as e:
         print(f"Entity rescue failed: {e}")
@@ -58,7 +58,7 @@ async def rescue_data():
         cursor_legacy.execute("SELECT * FROM relations")
         relations = cursor_legacy.fetchall()
         print(f"Found {len(relations)} relations in legacy DB.")
-        
+
         async with await async_get_connection() as conn_new:
             for r in relations:
                 r_dict = dict(r)
@@ -66,14 +66,14 @@ async def rescue_data():
                 subj = r_dict.get("subject") or r_dict.get("source")
                 obj = r_dict.get("object") or r_dict.get("target")
                 pred = r_dict.get("predicate") or r_dict.get("relation_type")
-                
+
                 if subj and obj and pred:
                     await conn_new.execute(
                         "INSERT OR IGNORE INTO relations (subject, object, predicate, created_by) VALUES (?, ?, ?, ?)",
                         (subj, obj, pred, "rescue_script")
                     )
             await conn_new.commit()
-            print(f"Relations merged.")
+            print("Relations merged.")
     except Exception as e:
         print(f"Relation rescue skipped or failed: {e}")
 
@@ -82,7 +82,7 @@ async def rescue_data():
         cursor_legacy.execute("SELECT * FROM observations")
         obs = cursor_legacy.fetchall()
         print(f"Found {len(obs)} observations in legacy DB.")
-        
+
         async with await async_get_connection() as conn_new:
             for o in obs:
                 o_dict = dict(o)
@@ -91,7 +91,7 @@ async def rescue_data():
                     (o_dict["entity_name"], o_dict["content"], "rescue_script")
                 )
             await conn_new.commit()
-            print(f"Observations merged.")
+            print("Observations merged.")
     except Exception as e:
         print(f"Observation rescue skipped or failed: {e}")
 

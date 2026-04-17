@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 
 db_path = "shared_memory.db"
 if os.path.exists(db_path):
