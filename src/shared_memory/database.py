@@ -244,7 +244,8 @@ async def init_db(force: bool = False):
                 old_data TEXT,
                 new_data TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                agent_id TEXT
+                agent_id TEXT,
+                meta_data TEXT
             )
         """)
         await cursor.execute("""
@@ -277,7 +278,8 @@ async def init_db(force: bool = False):
                 query TEXT,
                 results_count INTEGER,
                 hit_content_ids TEXT,
-                avg_similarity REAL DEFAULT 0.0
+                avg_similarity REAL DEFAULT 0.0,
+                meta_data TEXT
             )
         """)
         # Troubleshooting Knowledge table (Decoupled Feature)
@@ -298,6 +300,8 @@ async def init_db(force: bool = False):
         await _add_column_if_missing(cursor, "entities", "created_by TEXT")
         await _add_column_if_missing(cursor, "entities", "updated_by TEXT")
         await _add_column_if_missing(cursor, "entities", "importance INTEGER DEFAULT 5")
+        await _add_column_if_missing(cursor, "audit_logs", "meta_data TEXT")
+        await _add_column_if_missing(cursor, "search_stats", "meta_data TEXT")
 
         await _add_column_if_missing(cursor, "relations", "created_at DATETIME")
         await _add_column_if_missing(cursor, "relations", "created_by TEXT")
