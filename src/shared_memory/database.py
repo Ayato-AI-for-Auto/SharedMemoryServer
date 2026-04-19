@@ -5,7 +5,7 @@ import random
 import aiosqlite
 
 from shared_memory.exceptions import DatabaseError, DatabaseLockedError
-from shared_memory.utils import get_db_path, log_error, get_logger
+from shared_memory.utils import get_db_path, get_logger, log_error
 
 logger = get_logger("database")
 
@@ -41,7 +41,7 @@ def retry_on_db_lock(max_retries=15, initial_delay=0.1):
                         ) + random.uniform(0, 0.1)
                         await asyncio.sleep(delay)
                     else:
-                        raise
+                        raise e
             return await func(*args, **kwargs)
 
         return wrapper
@@ -329,13 +329,9 @@ async def init_db(force: bool = False):
 
         await _add_column_if_missing(cursor, "snapshots", "description TEXT")
         await _add_column_if_missing(cursor, "snapshots", "file_path TEXT")
-        await _add_column_if_missing(
-            cursor, "knowledge_metadata", "decay_rate REAL DEFAULT 0.01"
-        )
+        await _add_column_if_missing(cursor, "knowledge_metadata", "decay_rate REAL DEFAULT 0.01")
         await _add_column_if_missing(cursor, "search_stats", "hit_content_ids TEXT")
-        await _add_column_if_missing(
-            cursor, "search_stats", "avg_similarity REAL DEFAULT 0.0"
-        )
+        await _add_column_if_missing(cursor, "search_stats", "avg_similarity REAL DEFAULT 0.0")
 
         await conn.commit()
 
@@ -372,7 +368,7 @@ async def update_access(content_id: str, conn=None):
                     access_count = access_count + 1,
                     last_accessed = CURRENT_TIMESTAMP,
                     stability = stability * 1.1
-            """,
+                """,
                 (content_id,),
             )
             await conn.commit()

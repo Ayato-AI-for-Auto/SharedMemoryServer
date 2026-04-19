@@ -8,6 +8,9 @@ from shared_memory.database import (
     retry_on_db_lock,
 )
 from shared_memory.thought_logic import init_thoughts_db
+from shared_memory.utils import get_logger
+
+logger = get_logger("insights")
 
 
 class InsightEngine:

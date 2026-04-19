@@ -1,10 +1,8 @@
-
 import pytest
-import aiosqlite
-import os
-from shared_memory.database import init_db, async_get_connection
-from shared_memory.graph import save_relations
+
 from shared_memory.bank import save_bank_files
+from shared_memory.database import async_get_connection
+from shared_memory.graph import save_relations
 
 @pytest.mark.asyncio
 async def test_migration_v1_auto_applied_unit(mock_env):

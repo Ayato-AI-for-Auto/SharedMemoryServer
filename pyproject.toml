@@ -33,7 +33,7 @@ shared-memory-admin = "shared_memory.admin_cli:main"
 shared-memory-admin-server = "shared_memory.admin_server:main"
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py311"
 exclude = ["archive"]
 

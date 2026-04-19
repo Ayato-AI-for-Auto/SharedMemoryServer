@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
+
 from shared_memory import lifecycle, logic
 from shared_memory.database import async_get_connection, init_db
 

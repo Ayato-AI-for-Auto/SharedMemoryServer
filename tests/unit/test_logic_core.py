@@ -1,8 +1,9 @@
+import json
 
 import pytest
-import json
-from shared_memory.logic import save_memory_core
+
 from shared_memory.database import async_get_connection
+from shared_memory.logic import save_memory_core
 
 @pytest.mark.asyncio
 async def test_save_memory_entities_unit(fake_llm):

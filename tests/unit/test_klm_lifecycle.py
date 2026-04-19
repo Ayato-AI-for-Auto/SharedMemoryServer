@@ -1,6 +1,7 @@
 import pytest
-from shared_memory import logic, lifecycle
-from shared_memory.database import init_db, async_get_connection
+
+from shared_memory import logic
+from shared_memory.database import async_get_connection, init_db
 
 @pytest.mark.asyncio
 async def test_klm_status_toggle_and_search_filtering():

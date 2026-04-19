@@ -1,8 +1,8 @@
-
 import os
-import pytest
-import sqlite3
+
 import aiosqlite
+import pytest
+
 from shared_memory.migrations.manager import MigrationManager
 from shared_memory.utils import get_db_path
 

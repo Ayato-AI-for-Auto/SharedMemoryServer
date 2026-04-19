@@ -1,8 +1,10 @@
 
-import pytest
-import sqlite3
 import asyncio
-from shared_memory.database import async_get_connection, init_db, retry_on_db_lock, DatabaseLockedError
+import sqlite3
+
+import pytest
+
+from shared_memory.database import DatabaseLockedError, async_get_connection, retry_on_db_lock
 
 @pytest.mark.asyncio
 async def test_database_singleton_connection():
