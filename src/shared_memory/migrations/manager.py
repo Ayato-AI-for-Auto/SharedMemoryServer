@@ -33,12 +33,12 @@ class MigrationManager:
         """)
         await conn.commit()
 
-    async def get_applied_versions(self, conn: aiosqlite.Connection) -> List[int]:
+    async def get_applied_versions(self, conn: aiosqlite.Connection) -> list[int]:
         """Returns a list of already applied migration versions."""
         cursor = await conn.execute("SELECT version FROM schema_migrations ORDER BY version")
         return [row[0] for row in await cursor.fetchall()]
 
-    def _get_migration_scripts(self) -> List[dict]:
+    def _get_migration_scripts(self) -> list[dict]:
         """Scans the versions directory and returns valid migration scripts."""
         scripts = []
         if not os.path.exists(self.migrations_dir):
@@ -80,7 +80,7 @@ class MigrationManager:
             shutil.copy2(self.db_path, backup_path)
         except Exception as e:
             logger.error(f"Migration aborted: Backup failed: {e}")
-            raise RuntimeError(f"Database backup failed: {e}")
+            raise RuntimeError(f"Database backup failed: {e}") from e
 
         # --- Execution Phase ---
         for script in pending:

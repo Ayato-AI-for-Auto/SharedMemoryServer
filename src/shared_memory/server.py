@@ -39,7 +39,7 @@ async def save_memory(
     entities: list[dict[str, Any]] | None = None,
     relations: list[dict[str, Any]] | None = None,
     observations: list[dict[str, Any]] | None = None,
-    bank_files: dict[str, str] | list[dict[str, str]] | None = None,
+    bank_files: Any | None = None,
     agent_id: str = "default_agent",
 ) -> str:
     """
@@ -68,14 +68,17 @@ async def read_memory(query: str | None = None):
 
 
 @mcp.tool()
-async def get_graph_data(query: str = None) -> dict[str, Any]:
+async def get_graph_data(query: str = None) -> dict[str, Any] | str:
     """
     Retrieves knowledge from the graph database.
     Optionally filters graph data based on a query.
     """
-    await init_db()
-    await thought_logic.init_thoughts_db()
-    return await logic.graph.get_graph_data(query)
+    try:
+        await init_db()
+        await thought_logic.init_thoughts_db()
+        return await logic.graph.get_graph_data(query)
+    except Exception as e:
+        return f"Database Error: Failed to retrieve graph data. {e}"
 
 
 @mcp.tool()
@@ -158,6 +161,17 @@ async def get_insights(format: str = "markdown"):
     if format == "json":
         return metrics
     return InsightEngine.generate_report_markdown(metrics)
+
+
+@mcp.tool()
+async def check_integrity():
+    """
+    Performs a comprehensive integrity check of the LogicHive system,
+    including DB status, Vector store synchronization, and Environment pools.
+    """
+    from shared_memory.health import get_comprehensive_diagnostics
+
+    return await get_comprehensive_diagnostics()
 
 
 def main():

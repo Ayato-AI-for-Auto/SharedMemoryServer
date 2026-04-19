@@ -18,41 +18,55 @@ def normalize_bank_files(bank_files: Any) -> dict[str, str]:
     """
     Standardizes bank_files input into a dict[str, str].
     Handles:
-    - Already a dict
-    - List of dicts with 'filename' and 'content' keys
-    - List of dicts with only 'content' (derives filename)
+    - Already a dict: { "file.md": "content" }
+    - List of dicts with various naming: 
+        [{"filename": "a.md", "content": "..."}, {"name": "b.md", "text": "..."}]
+    - List of simple dicts: [{"a.md": "content"}]
     """
     if not bank_files:
         return {}
+    
+    result = {}
+    
+    # 1. Handle Single Dictionary Case
     if isinstance(bank_files, dict):
-        return bank_files
+        # Could be { "file.md": "content" } OR { "filename": "a.md", "content": "..." }
+        if "content" in bank_files or "text" in bank_files:
+            # It's a single file object passed as a dict
+            content = bank_files.get("content") or bank_files.get("text")
+            filename = bank_files.get("filename") or bank_files.get("name") or "derived_knowledge.md"
+            if content:
+                result[str(filename)] = str(content)
+            return result
+        # Standard format: { "file.md": "content" }
+        return {str(k): str(v) for k, v in bank_files.items() if v}
+
+    # 2. Handle List Case
     if isinstance(bank_files, list):
-        result = {}
         for i, item in enumerate(bank_files):
             if not isinstance(item, dict):
                 continue
-
-            filename = item.get("filename")
-            content = item.get("content")
-
-            if filename and content:
-                result[filename] = content
+            
+            # Pattern A: Standard explicit keys
+            # (Checks multiple synonyms for filename and content)
+            filename = item.get("filename") or item.get("name") or item.get("title")
+            content = item.get("content") or item.get("text") or item.get("body")
+            
+            if content:
+                if not filename:
+                    filename = f"derived_knowledge_{i}.md"
+                result[str(filename)] = str(content)
                 continue
-
-            # Fallback 1: Item is a single { "name": "content" } entry
-            if not content and len(item) == 1:
+            
+            # Pattern B: Item is a single { "filename.md": "content" } entry
+            if len(item) == 1:
                 key, val = next(iter(item.items()))
                 if isinstance(val, str):
-                    result[key] = val
+                    result[str(key)] = val
                     continue
 
-            # Fallback 2: Content only, missing filename
-            if content and not filename:
-                safe_name = f"derived_knowledge_{i}.md"
-                result[safe_name] = content
-                logger.warning(f"Bank file missing filename, saved as {safe_name}")
-
         return result
+    
     return {}
 
 
@@ -69,7 +83,13 @@ async def save_memory_core(
     Performs all slow AI operations outside the DB transaction.
     """
     logger.info("save_memory_core START")
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        msg = f"Critical Error: Could not initialize database. {e}"
+        log_error(msg)
+        return msg
+
     entities = entities or []
     relations = relations or []
     observations = observations or []
@@ -113,7 +133,12 @@ async def save_memory_core(
 
     # 1.3 Execute Parallel AI Calls
     logger.debug("Phase 1 (AI) GATHERING")
-    ai_results = await asyncio.gather(*tasks)
+    try:
+        ai_results = await asyncio.gather(*tasks)
+    except Exception as e:
+        msg = f"AI Error: Connectivity failed during embedding computation. {e}"
+        log_error(msg)
+        return msg
     logger.debug("Phase 1 (AI) COMPLETE")
 
     all_vectors = ai_results[0]
@@ -132,61 +157,68 @@ async def save_memory_core(
 
     # --- Phase 2: Rapid DB Write ---
     logger.debug("Phase 2 (DB) START")
-    async with await async_get_connection() as conn:
-        logger.debug("DB Connection ACQUIRED")
-        results = []
-        try:
-            if entities:
-                results.append(
-                    await graph.save_entities(
-                        entities,
+    try:
+        async with await async_get_connection() as conn:
+            logger.debug("DB Connection ACQUIRED")
+            results = []
+            try:
+                if entities:
+                    results.append(
+                        await graph.save_entities(
+                            entities,
+                            agent_id,
+                            conn,
+                            precomputed_vectors=precomputed_entity_vectors,
+                        )
+                    )
+                if relations:
+                    results.append(await graph.save_relations(relations, agent_id, conn))
+                if observations:
+                    res, conflicts = await graph.save_observations(
+                        observations,
                         agent_id,
                         conn,
-                        precomputed_vectors=precomputed_entity_vectors,
+                        precomputed_conflicts=precomputed_observations_conflicts,
                     )
-                )
-            if relations:
-                results.append(await graph.save_relations(relations, agent_id, conn))
-            if observations:
-                res, conflicts = await graph.save_observations(
-                    observations,
-                    agent_id,
-                    conn,
-                    precomputed_conflicts=precomputed_observations_conflicts,
-                )
-                results.append(res)
-                if conflicts:
-                    results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
-            if bank_files:
-                results.append(
-                    await bank.save_bank_files(
-                        bank_files,
-                        agent_id,
-                        conn,
-                        precomputed_vectors=precomputed_bank_vectors,
+                    results.append(res)
+                    if conflicts:
+                        results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
+                if bank_files:
+                    results.append(
+                        await bank.save_bank_files(
+                            bank_files,
+                            agent_id,
+                            conn,
+                            precomputed_vectors=precomputed_bank_vectors,
+                        )
                     )
-                )
 
-            await conn.commit()
-        except aiosqlite.Error as e:
-            await conn.rollback()
-            log_error("Database transaction failed in save_memory_core", e)
-            raise DatabaseError(f"Transaction failed: {e}") from e
-        except Exception as e:
-            await conn.rollback()
-            log_error("Unexpected error in save_memory_core", e)
-            raise SharedMemoryError(f"Unexpected error: {e}") from e
+                await conn.commit()
+            except aiosqlite.Error as e:
+                await conn.rollback()
+                log_error("Database transaction failed in save_memory_core", e)
+                return f"Database Error: Transaction failed. {e}"
+            except Exception as e:
+                await conn.rollback()
+                log_error("Unexpected error in save_memory_core", e)
+                return f"Internal Error: {e}"
+    except Exception as e:
+        return f"Database Connection Error: Could not acquire connection. {e}"
 
     logger.info("save_memory_core COMPLETE")
     return " | ".join(results)
 
 
-async def read_memory_core(query: str | None = None) -> dict[str, Any]:
+async def read_memory_core(query: str | None = None) -> dict[str, Any] | str:
     """
     Core logic for reading memory.
     """
     logger.info(f"read_memory_core START query={query}")
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        return f"Database Error: Initialization failed. {e}"
+
     try:
         if query:
             graph_data, bank_data = await search.perform_search(query)
@@ -195,9 +227,13 @@ async def read_memory_core(query: str | None = None) -> dict[str, Any]:
             bank_data = await bank.read_bank_data()
         logger.info(f"read_memory_core COMPLETE query={query}")
         return {"graph": graph_data, "bank": bank_data}
+    except aiosqlite.OperationalError as e:
+        if "locked" in str(e).lower():
+            return "Database Error: Database is currently locked by another process."
+        return f"Database Error: Query failed. {e}"
     except Exception as e:
         log_error("Error in read_memory_core", e)
-        raise SharedMemoryError(f"Read failed: {e}") from e
+        return f"Read Error: {e}"
 
 
 async def get_audit_history_core(limit: int = 20, table_name: str | None = None):

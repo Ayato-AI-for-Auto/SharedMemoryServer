@@ -25,7 +25,7 @@ async def test_migration_recovery_on_failure(tmp_path):
         
         async with aiosqlite.connect(db_path) as conn:
             # This should fail because the script is non-existent
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 await mgr.run_migrations(conn)
                 
     # Verify that a backup was created DESPITE the failure
