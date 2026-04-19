@@ -2,6 +2,26 @@
 
 <!-- version list -->
 
+## v1.6.0 (2026-04-19)
+
+### Features
+
+- Implement core graph, embedding, and search modules for shared memory service
+  ([`3b5ea4a`](https://github.com/ayato-labs/SharedMemoryServer/commit/3b5ea4a43b3f609e844dc08a26bc553c3fb561c1))
+
+- Implement core shared memory logic and add comprehensive unit, integration, and chaos test suites
+  ([`a1e0914`](https://github.com/ayato-labs/SharedMemoryServer/commit/a1e09142f8a0b5b5f6ef4ec5a2bcf461b81c87ad))
+
+- Implement hybrid search logic with keyword and vector-based retrieval capabilities
+  ([`3fc1f4b`](https://github.com/ayato-labs/SharedMemoryServer/commit/3fc1f4b05f27240a861c56832e5737d2d18c86f9))
+
+### Testing
+
+- Add integration tests for severe fault scenarios including concurrency, large payloads, and error
+  handling
+  ([`8067e60`](https://github.com/ayato-labs/SharedMemoryServer/commit/8067e60ae0882ad603a6f37eb7e58c28ab8728a7))
+
+
 ## v1.5.0 (2026-04-17)
 
 ### Features
