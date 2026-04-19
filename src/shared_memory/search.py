@@ -219,12 +219,17 @@ async def get_graph_data_by_cids(cids: list[str], conn):
 
     return {
         "entities": [
-            {"name": r[0], "type": r[1], "description": r[2]} for r in entities
+            {"name": r["name"], "type": r["entity_type"], "description": r["description"]}
+            for r in entities
         ],
         "relations": [
-            {"subject": r[0], "object": r[1], "predicate": r[2]} for r in relations
+            {"subject": r["subject"], "object": r["object"], "predicate": r["predicate"]}
+            for r in relations
         ],
-        "observations": [{"entity": o[1], "content": o[2], "at": o[3]} for o in obs],
+        "observations": [
+            {"entity": o["entity_name"], "content": o["content"], "at": o["timestamp"]}
+            for o in obs
+        ],
     }
 
 
@@ -244,7 +249,7 @@ async def get_bank_data_by_cids(cids: list[str], conn):
 
         await update_access(cid, conn=conn)
 
-    return {f[0]: f[1] for f in files}
+    return {f["filename"]: f["content"] for f in files}
 
 
 async def synthesize_knowledge(entity_name: str):

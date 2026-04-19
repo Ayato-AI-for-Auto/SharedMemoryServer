@@ -1,13 +1,17 @@
 import asyncio
-import sys
 import json
 import subprocess
+import sys
+
 
 async def run_test():
     # Use the venv python to run the server as a subprocess
     # We want to emulate what the MCP client does: send JSON-RPC via stdin
-    venv_python = r"c:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer\.venv\Scripts\python.exe"
-    
+    venv_python = (
+        r"c:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer"
+        r"\.venv\Scripts\python.exe"
+    )
+
     process = subprocess.Popen(
         [venv_python, "-m", "shared_memory.server"],
         stdin=subprocess.PIPE,
@@ -15,25 +19,28 @@ async def run_test():
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
-        bufsize=0
+        bufsize=0,
     )
 
     def send_rpc(method, params):
-        msg = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params
-        }
+        msg = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
         process.stdin.write(json.dumps(msg) + "\n")
         process.stdin.flush()
 
-    # Wait for server to start? MCP servers are usually ready immediately but lifespan might take time.
+    # Wait for server to start?
+    # MCP servers are usually ready immediately but lifespan might take time.
     # FastMCP lifespan runs on startup.
-    
+
     print("Sending initialize...")
-    send_rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0"}})
-    
+    send_rpc(
+        "initialize",
+        {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1.0"},
+        },
+    )
+
     # Read response
     line = process.stdout.readline()
     print(f"Response: {line}")
@@ -45,7 +52,7 @@ async def run_test():
 
     print("Sending tools/call for read_memory...")
     send_rpc("tools/call", {"name": "read_memory", "arguments": {"query": None}})
-    
+
     # Read until we get a result or EOF
     while True:
         line = process.stdout.readline()
@@ -63,8 +70,10 @@ async def run_test():
 
     process.terminate()
 
+
 if __name__ == "__main__":
     if sys.platform == "win32":
         import io
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     asyncio.run(run_test())

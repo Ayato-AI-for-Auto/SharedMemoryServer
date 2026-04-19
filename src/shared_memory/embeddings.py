@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+from typing import Any
 
 from google import genai
 
@@ -32,40 +33,46 @@ def get_gemini_client():
 async def compute_embeddings_bulk(texts: list[str]) -> list[list[float]]:
     """
     Computes embeddings for a list of strings.
-    Alias for compute_embedding to maintain backward compatibility with graph.py.
     """
     return await compute_embedding(texts)
 
 
 @retry_on_db_lock()
-async def compute_embedding(text_list: list[str]) -> list[list[float]]:
+async def compute_embedding(
+    text_list: str | list[str], conn: Any = None
+) -> list[float] | list[list[float]]:
     """
     Computes text embeddings using the Gemini API (Async).
-    Uses a local SQLite cache to avoid redundant API calls.
+    Handles both single strings and lists of strings.
     """
+    # 0. Support for single string input
+    is_single = isinstance(text_list, str)
+    items = [text_list] if is_single else text_list
+
     client = get_gemini_client()
     if not client:
-        return [([0.0] * 768) for _ in text_list]
+        fallback = [([0.0] * 768) for _ in items]
+        return fallback[0] if is_single else fallback
 
     # 1. Filter out empty strings
     valid_entries = []
-    for i, txt in enumerate(text_list):
+    for i, txt in enumerate(items):
         if txt and txt.strip():
-            # Truncate extremely long texts
             valid_entries.append((i, txt[:10000]))
 
     if not valid_entries:
-        return [([0.0] * 768) for _ in text_list]
+        fallback = [([0.0] * 768) for _ in items]
+        return fallback[0] if is_single else fallback
 
     # 2. Check cache
-    results = [None] * len(text_list)
+    results = [None] * len(items)
     to_compute = []
     compute_map = []
 
-    async with await async_get_connection() as conn:
+    async def _process_cache(db):
         for original_idx, txt in valid_entries:
             content_hash = _get_text_hash(txt)
-            cursor = await conn.execute(
+            cursor = await db.execute(
                 "SELECT vector FROM embedding_cache WHERE content_hash = ?",
                 (content_hash,),
             )
@@ -76,8 +83,16 @@ async def compute_embedding(text_list: list[str]) -> list[list[float]]:
                 to_compute.append(txt)
                 compute_map.append((original_idx, content_hash))
 
+    if conn:
+        # DO NOT use 'async with conn' for already open thread-based connections
+        await _process_cache(conn)
+    else:
+        async with await async_get_connection() as db:
+            await _process_cache(db)
+
     if not to_compute:
-        return [r if r is not None else ([0.0] * 768) for r in results]
+        final_results = [r if r is not None else ([0.0] * 768) for r in results]
+        return final_results[0] if is_single else final_results
 
     # 3. Compute missing embeddings via Async API
     try:
@@ -87,13 +102,11 @@ async def compute_embedding(text_list: list[str]) -> list[list[float]]:
             config={"task_type": "RETRIEVAL_DOCUMENT"},
         )
 
-        async with await async_get_connection() as conn:
+        async def _save_cache(db_conn):
             for idx, (original_idx, content_hash) in enumerate(compute_map):
                 vector = response.embeddings[idx].values
                 results[original_idx] = vector
-
-                # Update cache
-                await conn.execute(
+                await db_conn.execute(
                     """
                     INSERT OR REPLACE INTO embedding_cache
                     (content_hash, vector, model_name)
@@ -101,7 +114,13 @@ async def compute_embedding(text_list: list[str]) -> list[list[float]]:
                 """,
                     (content_hash, json.dumps(vector), EMBEDDING_MODEL),
                 )
-            await conn.commit()
+            await db_conn.commit()
+
+        if conn:
+            await _save_cache(conn)
+        else:
+            async with await async_get_connection() as db:
+                await _save_cache(db)
 
     except Exception as e:
         log_error("Failed to compute embeddings via Gemini API", e)
@@ -110,4 +129,5 @@ async def compute_embedding(text_list: list[str]) -> list[list[float]]:
             results[original_idx] = [0.0] * 768
 
     # Ensure all slots are filled
-    return [r if r is not None else ([0.0] * 768) for r in results]
+    final_results = [r if r is not None else ([0.0] * 768) for r in results]
+    return final_results[0] if is_single else final_results

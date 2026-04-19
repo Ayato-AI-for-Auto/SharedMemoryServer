@@ -3,7 +3,7 @@ import os
 import shutil
 import tempfile
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -33,84 +33,88 @@ async def setup_teardown_db(request):
 
 
 @pytest.fixture
+def mock_env():
+    """Dummy fixture for compatibility with robustness tests."""
+    return True
+
+
+@pytest.fixture
 def mock_gemini_client():
-    """
-    Returns a controlled FakeGeminiClient that supports both sync
-    and the new `aio` async interface.
-    """
     from tests.unit.fake_client import FakeGeminiClient
     client = FakeGeminiClient()
     with patch("shared_memory.embeddings.get_gemini_client", return_value=client), \
-         patch("shared_memory.distiller.get_gemini_client", return_value=client):
+         patch("shared_memory.distiller.get_gemini_client", return_value=client), \
+         patch("shared_memory.graph.get_gemini_client", return_value=client):
         yield client
 
 
 @pytest.fixture(autouse=True)
-def mock_llm():
+def mock_llm(request):
     """
-    Universal LLM mock that ensures no real network calls occur during tests.
-    Supports FastMCP tool testing and direct logic calls.
+    Universal LLM mock (MagicMock) that ensures no real network calls occur.
+    Respects @pytest.mark.no_global_mock.
     """
-    from unittest.mock import AsyncMock
+    if "no_global_mock" in request.node.keywords:
+        yield None
+        return
 
-    mock_client = MagicMock()
+    client = MagicMock()
 
-    # Sync Models
-    def mock_embed_content(model, contents, config=None):
-        mock_response = MagicMock()
-        from unittest.mock import MagicMock as MockVal
-        val = MockVal()
-        val.values = [0.1] * 768
-        mock_response.embeddings = [val] * len(contents)
-        return mock_response
+    # 1. Setup Sync Methods
+    client.models.generate_content.return_value.text = json.dumps({
+        "conflict": False, "reason": "No conflict detected in mock."
+    })
+    
+    def set_response(method, text):
+        if method == "generate_content":
+            client.models.generate_content.return_value.text = text
+            client.aio.models.generate_content.return_value.text = text
+    client.models.set_response = set_response
 
-    mock_client.models.embed_content.side_effect = mock_embed_content
-    mock_client.models.generate_content.return_value.text = json.dumps({
-        "conflict": False, "reason": "Consistent"
+    # 2. Setup Async (AIO) Methods
+    client.aio.models.generate_content = AsyncMock()
+    client.aio.models.generate_content.return_value.text = json.dumps({
+        "conflict": False, "reason": "No conflict detected in mock."
     })
 
-    # Async Models (aio)
-    mock_aio_models = AsyncMock()
-    mock_aio_models.embed_content.side_effect = mock_embed_content
-    mock_aio_models.generate_content.return_value.text = json.dumps({
-        "conflict": False, "reason": "Consistent"
-    })
+    client.aio.models.embed_content = AsyncMock()
+    mock_embedding = MagicMock()
+    mock_embedding.values = [0.1] * 768
+    client.aio.models.embed_content.return_value.embeddings = [mock_embedding] * 100
 
-    # Model listing (async)
-    mock_model = MagicMock()
-    mock_model.name = "models/text-embedding-004"
-    mock_aio_models.list.return_value = [mock_model]
-
-    mock_client.aio = MagicMock()
-    mock_client.aio.models = mock_aio_models
+    client.aio.models.list = AsyncMock()
+    model_obj = MagicMock()
+    model_obj.name = "models/gemini-2.0-flash-exp"
+    client.aio.models.list.return_value = [model_obj]
 
     patches = [
-        patch("shared_memory.embeddings.get_gemini_client"),
-        patch("shared_memory.distiller.get_gemini_client")
+        patch("shared_memory.embeddings.get_gemini_client", return_value=client),
+        patch("shared_memory.distiller.get_gemini_client", return_value=client),
+        patch("shared_memory.graph.get_gemini_client", return_value=client)
     ]
 
-    handlers = []
     for p in patches:
-        h = p.start()
-        h.return_value = mock_client
-        handlers.append(p)
+        p.start()
 
     try:
-        yield mock_client
+        yield client
     finally:
-        for p in handlers:
+        for p in patches:
             p.stop()
 
 
 @pytest.fixture(autouse=True)
 def mock_gemini_globally(mock_llm):
-    """Alias for mock_llm for tests that expect this name."""
+    return mock_llm
+
+
+@pytest.fixture(autouse=True)
+def mock_gemini(mock_llm):
     return mock_llm
 
 
 @contextmanager
 def temp_env(env_vars):
-    """Temporary environment variable manager."""
     old_env = os.environ.copy()
     os.environ.update(env_vars)
     try:

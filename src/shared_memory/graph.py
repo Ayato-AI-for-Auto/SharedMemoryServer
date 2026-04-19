@@ -350,7 +350,14 @@ async def get_graph_data(query: str | None = None):
             return {
                 "entities": [dict(e) for e in matched_entities],
                 "relations": [dict(r) for r in relations],
-                "observations": [dict(o) for o in observations],
+                "observations": [
+                    {
+                        "entity": o["entity_name"],
+                        "content": o["content"],
+                        "at": o["timestamp"],
+                    }
+                    for o in observations
+                ],
             }
         else:
             cursor = await conn.execute("SELECT * FROM entities")
@@ -362,5 +369,12 @@ async def get_graph_data(query: str | None = None):
             return {
                 "entities": [dict(e) for e in entities],
                 "relations": [dict(r) for r in relations],
-                "observations": [dict(o) for o in observations],
+                "observations": [
+                    {
+                        "entity": o["entity_name"],
+                        "content": o["content"],
+                        "at": o["timestamp"],
+                    }
+                    for o in observations
+                ],
             }

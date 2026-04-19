@@ -179,12 +179,20 @@ def sanitize_filename(name: str) -> str:
     Converts a string into a safe filename.
     Removes path traversal attempts and special characters.
     """
-    # Replace anything not alphanumeric or underscore/hyphen/dot
+    # 0. Strip directories
+    name = os.path.basename(name)
+
+    # 1. Strip ANY existing extension (e.g., .txt, .md) to enforce .md
+    name, _ = os.path.splitext(name)
+
+    # 2. Replace anything not alphanumeric or underscore/hyphen/dot
     clean = re.sub(r"[^\w\-\.]", "_", name)
-    # Prevent hidden files or path traversal
+
+    # 3. Prevent hidden files or path traversal
     clean = clean.lstrip(".")
     if not clean:
         clean = "unnamed_entity"
+
     return f"{clean}.md"
 
 

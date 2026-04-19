@@ -59,6 +59,7 @@ async def save_bank_files(
     cursor = await conn.execute("SELECT name FROM entities")
     existing_entities = [r[0] for r in await cursor.fetchall()]
     bank_dir = get_bank_dir()
+    os.makedirs(bank_dir, exist_ok=True)
 
     items_to_process = []
     for filename, content in bank_files.items():
