@@ -59,7 +59,11 @@ async def _check_conflict_internal(entity_name: str, new_content: str, agent_id:
         config={"response_mime_type": "application/json"},
     )
 
-    data = json.loads(response.text)
+    try:
+        data = json.loads(response.text)
+    except Exception as e:
+        log_error("Failed to parse conflict check JSON", e)
+        return False, None
     if data.get("conflict"):
         # Log to DB
         await conn.execute(

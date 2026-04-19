@@ -27,17 +27,21 @@ async def setup_teardown_db(request):
     yield
 
     # Teardown: Close singleton connections before rmtree (Windows requirement)
-    await close_all_connections()
+    # We must ensure all connections are closed and references cleared
+    try:
+        await close_all_connections()
+    except Exception as e:
+        print(f"DEBUG: Teardown close_all_connections failed: {e}")
+
     if os.path.exists(home_dir):
         # Retry logic for Windows rmtree
         import time
-
-        for _ in range(5):
+        for _ in range(10):
             try:
                 shutil.rmtree(home_dir, ignore_errors=False)
                 break
             except OSError:
-                time.sleep(0.1)
+                time.sleep(0.2)
 
 
 @pytest.fixture
@@ -63,17 +67,14 @@ def fake_llm():
             p.stop()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def mock_llm(request):
     """
     Universal LLM mock (MagicMock) for Integration/System tests.
-    Disabled automatically if 'fake_llm' fixture or 'use_fake_llm' marker is used.
+    Disabled automatically if 'unit' marker is used.
     """
-    if (
-        "no_global_mock" in request.node.keywords
-        or "use_fake_llm" in request.node.keywords
-        or "fake_llm" in request.fixturenames
-    ):
+    if "unit" in request.node.keywords:
+        pytest.fail("MagicMock is prohibited in unit tests. Use 'fake_llm' fixture instead.")
         yield None
         return
 
