@@ -100,5 +100,7 @@ async def test_corrupted_settings_json_resilience():
             with patch(
                 "builtins.open", MagicMock(side_effect=Exception("Corrupted JSON!"))
             ):
+                from shared_memory.config import settings
+                settings._api_key = None # Force reset cached key for this test
                 client = embeddings.get_gemini_client()
                 assert client is None
