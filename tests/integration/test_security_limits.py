@@ -2,7 +2,11 @@ from unittest.mock import patch
 
 import pytest
 
-from shared_memory.database import async_get_connection, init_db, close_all_connections
+from shared_memory.database import (
+    async_get_connection,
+    close_all_connections,
+    init_db,
+)
 from shared_memory.exceptions import DatabaseError, SharedMemoryError
 from shared_memory.logic import save_memory_core
 from shared_memory.utils import get_db_path

@@ -155,15 +155,18 @@ async def save_entities(
 
         # Log Audit
         new_data = json.dumps({"name": name, "type": e_type, "desc": desc})
-        meta = json.dumps({
-            "model": EMBEDDING_MODEL if vector else None,
-            "has_vector": bool(vector),
-            "conflict_info": None,
-            "timestamp": datetime.now().isoformat()
-        })
+        meta = json.dumps(
+            {
+                "model": EMBEDDING_MODEL if vector else None,
+                "has_vector": bool(vector),
+                "conflict_info": None,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         await conn.execute(
             "INSERT INTO audit_logs (table_name, content_id, action, "
-            "old_data, new_data, agent_id, meta_data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "old_data, new_data, agent_id, meta_data) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             ("entities", name, action, old_data, new_data, agent_id, meta),
         )
 
@@ -208,20 +211,25 @@ async def save_relations(relations: list[dict[str, Any]], agent_id: str, conn):
         # Log Audit for each relation
         for subject, obj, predicate, creator in valid_relations:
             await conn.execute(
-                "INSERT INTO audit_logs (table_name, content_id, action, new_data, agent_id, meta_data) "
+                "INSERT INTO audit_logs (table_name, content_id, action, "
+                "new_data, agent_id, meta_data) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     "relations",
                     f"{subject}->{predicate}->{obj}",
                     "INSERT",
-                    json.dumps({"subject": subject, "object": obj, "predicate": predicate}),
+                    json.dumps(
+                        {"subject": subject, "object": obj, "predicate": predicate}
+                    ),
                     creator,
-                    json.dumps({
-                        "agent_context": "relation_mapping",
-                        "conflict_info": None,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                )
+                    json.dumps(
+                        {
+                            "agent_context": "relation_mapping",
+                            "conflict_info": None,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    ),
+                ),
             )
 
     msg = f"Saved {len(valid_relations)} relations"
@@ -285,11 +293,13 @@ async def save_observations(
         conflict_meta = next(
             (c for c in conflicts_to_report if c["entity"] == entity_name), None
         )
-        meta = json.dumps({
-            "agent_context": "development_trace",
-            "conflict_info": conflict_meta,
-            "timestamp": datetime.now().isoformat()
-        })
+        meta = json.dumps(
+            {
+                "agent_context": "development_trace",
+                "conflict_info": conflict_meta,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         await conn.execute(
             "INSERT INTO audit_logs (table_name, content_id, action, "
             "new_data, agent_id, meta_data) VALUES (?, ?, ?, ?, ?, ?)",
@@ -299,7 +309,7 @@ async def save_observations(
                 "INSERT",
                 json.dumps({"content": content}),
                 agent_id,
-                meta
+                meta,
             ),
         )
         success_count += 1

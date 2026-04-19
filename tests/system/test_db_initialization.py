@@ -67,6 +67,7 @@ async def test_robust_initialization_from_scratch(request):
                     cursor = await conn.execute(q)
                     assert await cursor.fetchone() is not None
         finally:
-            # 6. Windows-specific: MUST close singleton connection BEFORE temp dir cleanup (exiting 'with' block)
-            # This prevents PermissionError [WinError 32] during rmtree
+            # 6. Windows-specific: MUST close singleton connection BEFORE
+            # temp dir cleanup (exiting 'with' block). This prevents
+            # PermissionError [WinError 32] during rmtree.
             await database.close_all_connections()

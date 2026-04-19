@@ -1,198 +1,100 @@
+import json
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.unit.fake_client import FakeGeminiClient
-
-
-@pytest.fixture
-def temp_db():
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    yield path
-    if os.path.exists(path):
-        try:
-            os.remove(path)
-        except Exception:
-            pass
-    for ext in ["-wal", "-shm"]:
-        if os.path.exists(path + ext):
-            try:
-                os.remove(path + ext)
-            except Exception:
-                pass
-
-
-@pytest.fixture
-def temp_bank():
-    dir_path = tempfile.mkdtemp()
-    yield dir_path
-    shutil.rmtree(dir_path)
-
-
-@pytest.fixture
-def temp_home():
-    dir_path = tempfile.mkdtemp()
-    yield dir_path
-    shutil.rmtree(dir_path)
-
-
-@pytest.fixture(autouse=True)
-def mock_env(temp_db, temp_bank, temp_home):
-    """Mocks environment variables for testing with strict isolation."""
-    env_vars = {
-        "MEMORY_DB_PATH": temp_db,
-        "MEMORY_BANK_DIR": temp_bank,
-        "THOUGHTS_DB_PATH": temp_db.replace(".db", "_thoughts.db"),
-        "SHARED_MEMORY_HOME": temp_home,
-    }
-    if "GOOGLE_API_KEY" not in os.environ:
-        env_vars["GOOGLE_API_KEY"] = "mock_key"
-
-    with patch.dict(os.environ, env_vars):
-        yield
-
-
-@pytest.fixture(autouse=True)
-def mock_gemini_globally(request):
-    """Globally mocks Gemini API to prevent network calls and hangs during tests."""
-    if "no_global_mock" in request.keywords:
-        yield None
-        return
-
-    fake_client = FakeGeminiClient()
-    with patch("google.genai.Client", return_value=fake_client):
-        with patch(
-            "shared_memory.embeddings.get_gemini_client", return_value=fake_client
-        ):
-            with patch(
-                "shared_memory.graph.get_gemini_client", return_value=fake_client
-            ):
-                yield fake_client
-
 
 @pytest.fixture(autouse=True)
 async def setup_teardown_db(request):
-    from shared_memory.database import AsyncSQLiteConnection, init_db
+    from shared_memory.database import close_all_connections, init_db
     from shared_memory.thought_logic import init_thoughts_db
 
-    # Skip auto-initialization for migration tests in test_database.py
-    if "test_database.py" in str(request.node.fspath):
-        yield
-        return
+    # Standard path resolution for testing
+    home_dir = tempfile.mkdtemp()
+    os.environ["SHARED_MEMORY_HOME"] = home_dir
+    os.environ["MEMORY_DB_PATH"] = os.path.join(home_dir, "knowledge.db")
+    os.environ["THOUGHTS_DB_PATH"] = os.path.join(home_dir, "thoughts.db")
+    os.environ["MEMORY_BANK_DIR"] = os.path.join(home_dir, "bank")
 
+    # Initialize databases for each test
     await init_db(force=True)
     await init_thoughts_db(force=True)
+
     yield
-    # CLEANUP: Close persistent singleton connections between tests to ensure isolation
-    from shared_memory.database import close_all_connections
-    try:
-        await close_all_connections()
-    except Exception:
-        pass
 
-
-@pytest.fixture(autouse=True)
-async def cleanup_tasks():
-    """Cancel all pending tasks to prevent event loop hangs."""
-    yield
-    import asyncio
-    import logging
-
-    # Disable logging during cleanup to avoid noise
-    logging.getLogger("asyncio").setLevel(logging.CRITICAL)
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-
-    tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task()]
-    if not tasks:
-        return
-
-    for t in tasks:
-        t.cancel()
-
-    # Use a minimal timeout and ensure we don't hang in the cleanup itself.
-    # In CI, we prioritize finishing the job over deep cleanup if it hangs.
-    try:
-        await asyncio.wait_for(
-            asyncio.gather(*tasks, return_exceptions=True), timeout=1.0
-        )
-    except (TimeoutError, Exception):
-        # Force progress even if cleanup hangs
-        pass
+    # Teardown: Close singleton connections before rmtree (Windows requirement)
+    await close_all_connections()
+    if os.path.exists(home_dir):
+        shutil.rmtree(home_dir, ignore_errors=True)
 
 
 @pytest.fixture
-def mock_llm(request):
-    """MagicMock-based LLM fixture for INTEGRATION/CHAOS tests."""
-    with _setup_mock_llm_context() as mock_client:
-        yield mock_client
+def mock_gemini_client():
+    """
+    Returns a controlled FakeGeminiClient that supports both sync
+    and the new `aio` async interface.
+    """
+    from tests.unit.fake_client import FakeGeminiClient
+    client = FakeGeminiClient()
+    with patch("shared_memory.embeddings.get_gemini_client", return_value=client), \
+         patch("shared_memory.distiller.get_gemini_client", return_value=client):
+        yield client
+
 
 @pytest.fixture(autouse=True)
-def mock_gemini(request):
-    """Backward compatible alias for global LLM mocking."""
-    if "no_global_mock" in request.keywords:
-        yield None
-    else:
-        with _setup_mock_llm_context() as mock_client:
-            yield mock_client
-
-from contextlib import contextmanager
-
-@contextmanager
-def _setup_mock_llm_context():
-    patches = [
-        patch("shared_memory.embeddings.get_gemini_client"),
-        patch("shared_memory.search.get_gemini_client"),
-        patch("shared_memory.management.get_gemini_client"),
-        patch("shared_memory.distiller.get_gemini_client"),
-        patch("shared_memory.graph.get_gemini_client"),
-    ]
+def mock_llm():
+    """
+    Universal LLM mock that ensures no real network calls occur during tests.
+    Supports FastMCP tool testing and direct logic calls.
+    """
     from unittest.mock import AsyncMock
+
     mock_client = MagicMock()
-    
+
     # Sync Models
     def mock_embed_content(model, contents, config=None):
-        if isinstance(contents, str):
-            n = 1
-        else:
-            n = len(contents)
-        res = MagicMock()
-        res.embeddings = [MagicMock(values=[0.1] * 768) for _ in range(n)]
-        return res
+        mock_response = MagicMock()
+        from unittest.mock import MagicMock as MockVal
+        val = MockVal()
+        val.values = [0.1] * 768
+        mock_response.embeddings = [val] * len(contents)
+        return mock_response
 
     mock_client.models.embed_content.side_effect = mock_embed_content
-    mock_client.models.generate_content.return_value = MagicMock(
-        text='{"conflict": false, "reason": "Mocked response."}'
-    )
-    mock_client.models.list.return_value = [
-        type("Model", (), {"name": "models/gemini-2.0-flash-exp"})
-    ]
+    mock_client.models.generate_content.return_value.text = json.dumps({
+        "conflict": False, "reason": "Consistent"
+    })
 
-    # ASYNC Models (aio)
+    # Async Models (aio)
     mock_aio_models = AsyncMock()
     mock_aio_models.embed_content.side_effect = mock_embed_content
-    mock_aio_models.generate_content.return_value = MagicMock(
-        text='{"conflict": false, "reason": "Mocked response."}'
-    )
-    mock_aio_models.list.return_value = [
-        type("Model", (), {"name": "models/gemini-2.0-flash-exp"})
-    ]
+    mock_aio_models.generate_content.return_value.text = json.dumps({
+        "conflict": False, "reason": "Consistent"
+    })
+
+    # Model listing (async)
+    mock_model = MagicMock()
+    mock_model.name = "models/text-embedding-004"
+    mock_aio_models.list.return_value = [mock_model]
+
     mock_client.aio = MagicMock()
     mock_client.aio.models = mock_aio_models
-    
+
+    patches = [
+        patch("shared_memory.embeddings.get_gemini_client"),
+        patch("shared_memory.distiller.get_gemini_client")
+    ]
+
     handlers = []
     for p in patches:
         h = p.start()
         h.return_value = mock_client
         handlers.append(p)
-    
+
     try:
         yield mock_client
     finally:
@@ -200,37 +102,19 @@ def _setup_mock_llm_context():
             p.stop()
 
 
-@pytest.fixture
-async def async_db(temp_db):
-    from shared_memory.database import async_get_connection, init_db
-
-    await init_db()
-    async with await async_get_connection() as conn:
-        yield conn
+@pytest.fixture(autouse=True)
+def mock_gemini_globally(mock_llm):
+    """Alias for mock_llm for tests that expect this name."""
+    return mock_llm
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """
-    Cache the test run exit status.
-    This ensures we don't accidentally report 'success' if tests failed.
-    """
-    session.config._ci_exitstatus = exitstatus
-
-
-def pytest_unconfigure(config):
-    """
-    Aggressive zombie-thread killer.
-    Runs after all tests and coverage reporting have completely finished.
-    If we are on CI, bypass Python's atexit and thread-join locks.
-    """
-    exitstatus = getattr(config, "_ci_exitstatus", 0)
-    if os.environ.get("GITHUB_ACTIONS") == "true":
-        import sys
-
-        print(
-            f"\n[pytest] Tests finished with status {exitstatus}. Forcing os._exit.",
-            flush=True,
-        )
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(int(exitstatus))
+@contextmanager
+def temp_env(env_vars):
+    """Temporary environment variable manager."""
+    old_env = os.environ.copy()
+    os.environ.update(env_vars)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(old_env)

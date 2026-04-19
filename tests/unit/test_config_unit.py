@@ -1,8 +1,12 @@
+import json
 import os
-import pytest
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
+
+import pytest
+
 from shared_memory.config import Settings
+
 
 @pytest.mark.asyncio
 async def test_settings_db_path_resolution():
@@ -12,7 +16,7 @@ async def test_settings_db_path_resolution():
     with patch.dict(os.environ, {"SHARED_MEMORY_HOME": "/tmp/sm_test"}, clear=False):
         if "MEMORY_DB_PATH" in os.environ:
             del os.environ["MEMORY_DB_PATH"]
-        
+
         # Reset internal cache for test
         settings._base_dir = None
         assert settings.base_dir == Path("/tmp/sm_test").absolute()
@@ -21,11 +25,12 @@ async def test_settings_db_path_resolution():
     with patch.dict(os.environ, {"MEMORY_DB_PATH": "/tmp/explicit.db"}):
         assert settings.db_path == Path("/tmp/explicit.db").absolute()
 
+
 @pytest.mark.asyncio
 async def test_api_key_priority():
     """Verify Environ > .env > MCP settings priority."""
     settings = Settings()
-    
+
     # 1. Env Var
     with patch.dict(os.environ, {"GOOGLE_API_KEY": "env_key"}):
         settings._api_key = None
@@ -33,7 +38,11 @@ async def test_api_key_priority():
 
     # 2. MCP Settings fallback
     # Preserve home variables to avoid pathlib.home() breakdown
-    safe_env = {k: v for k, v in os.environ.items() if k in ("USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH")}
+    safe_env = {
+        k: v
+        for k, v in os.environ.items()
+        if k in ("USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH")
+    }
     with patch.dict(os.environ, safe_env, clear=True):
         settings._api_key = None
         mcp_json = {
@@ -47,6 +56,7 @@ async def test_api_key_priority():
              patch("builtins.open", mock_open(read_data=json.dumps(mcp_json))):
             assert settings.api_key == "mcp_key"
 
+
 @pytest.mark.asyncio
 async def test_logging_flag():
     """Verify logging flag resolution."""
@@ -55,5 +65,3 @@ async def test_logging_flag():
         assert settings.enable_structured_logging is False
     with patch.dict(os.environ, {"ENABLE_STRUCTURED_LOGGING": "true"}):
         assert settings.enable_structured_logging is True
-
-import json # For the mock_open usage

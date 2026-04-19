@@ -68,7 +68,8 @@ async def auto_distill_knowledge(
     try:
         # DYNAMIC MODEL DISCOVERY: Find the correct model name automatically
         try:
-            # ASYNC TRANSITION: Use client.aio for non-blocking list (Await the coroutine)
+            # ASYNC TRANSITION: Use client.aio for non-blocking list
+            # (Await the coroutine)
             available_models = [m.name for m in await client.aio.models.list()]
         except Exception as e:
             log_error(

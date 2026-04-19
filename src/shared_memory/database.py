@@ -1,8 +1,6 @@
 import asyncio
 import json
-import os
 import random
-from typing import Optional, Any
 
 import aiosqlite
 
@@ -10,8 +8,8 @@ from shared_memory.exceptions import DatabaseError, DatabaseLockedError
 from shared_memory.utils import get_db_path, log_error
 
 # Global singletons for persistent connections
-_MAIN_CONNECTION: Optional[aiosqlite.Connection] = None
-_THOUGHTS_CONNECTION: Optional[aiosqlite.Connection] = None
+_MAIN_CONNECTION: aiosqlite.Connection | None = None
+_THOUGHTS_CONNECTION: aiosqlite.Connection | None = None
 
 # Global lock to prevent race conditions during singleton initialization
 _INIT_LOCK = asyncio.Lock()
@@ -66,20 +64,28 @@ class AsyncSQLiteConnection:
             async with _INIT_LOCK:
                 if self.is_thoughts:
                     if _THOUGHTS_CONNECTION is None:
-                        _THOUGHTS_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
+                        _THOUGHTS_CONNECTION = await aiosqlite.connect(
+                            self.db_path, timeout=30.0
+                        )
                         _THOUGHTS_CONNECTION.row_factory = aiosqlite.Row
                         await _THOUGHTS_CONNECTION.execute("PRAGMA journal_mode = WAL")
-                        await _THOUGHTS_CONNECTION.execute("PRAGMA synchronous = NORMAL")
+                        await _THOUGHTS_CONNECTION.execute(
+                            "PRAGMA synchronous = NORMAL"
+                        )
                     self.conn = _THOUGHTS_CONNECTION
                 else:
                     if _MAIN_CONNECTION is None:
-                        _MAIN_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
+                        _MAIN_CONNECTION = await aiosqlite.connect(
+                            self.db_path, timeout=30.0
+                        )
                         _MAIN_CONNECTION.row_factory = aiosqlite.Row
                         await _MAIN_CONNECTION.execute("PRAGMA foreign_keys = ON")
                         await _MAIN_CONNECTION.execute("PRAGMA journal_mode = WAL")
-                        await _MAIN_CONNECTION.execute("PRAGMA synchronous = NORMAL")
+                        await _MAIN_CONNECTION.execute(
+                            "PRAGMA synchronous = NORMAL"
+                        )
                     self.conn = _MAIN_CONNECTION
-            
+
             return self.conn
         except Exception as e:
             from shared_memory.exceptions import DatabaseError

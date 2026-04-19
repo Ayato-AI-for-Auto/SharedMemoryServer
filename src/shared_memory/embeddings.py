@@ -4,146 +4,110 @@ import os
 
 from google import genai
 
-from shared_memory.database import async_get_connection, retry_on_db_lock
-from shared_memory.utils import get_logger, log_error, log_info
-
 from shared_memory.config import settings
+from shared_memory.database import async_get_connection, retry_on_db_lock
+from shared_memory.utils import get_logger, log_error
 
 logger = get_logger("embeddings")
 
-EMBEDDING_MODEL = settings.embedding_model
-DIMENSIONALITY = settings.dimensionality
+EMBEDDING_MODEL = "models/text-embedding-004"
 
 
 def _get_text_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    """Returns MD5 hash of the text for caching."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-@retry_on_db_lock()
-async def _get_cached_embedding(text_hash: str, conn=None) -> list[float] | None:
-    logger.debug(
-        f"_get_cached_embedding START hash={text_hash[:8]} "
-        f"reuse_conn={conn is not None}"
-    )
-
-    async def _execute(c):
-        logger.debug(f"_get_cached_embedding EXECUTING hash={text_hash[:8]}")
-        cursor = await c.execute(
-            "SELECT vector FROM embedding_cache WHERE "
-            "content_hash = ? AND model_name = ?",
-            (text_hash, EMBEDDING_MODEL),
-        )
-        row = await cursor.fetchone()
-        if row:
-            return json.loads(row[0].decode("utf-8"))
-        return None
-
-    if conn:
-        return await _execute(conn)
-
-    async with await async_get_connection() as c:
-        logger.debug(f"DB Connection ACQUIRED hash={text_hash[:8]}")
-        return await _execute(c)
-
-
-@retry_on_db_lock()
-async def _save_to_cache(text_hash: str, vector: list[float], conn=None):
-    vector_json = json.dumps(vector).encode("utf-8")
-
-    async def _execute(c):
-        await c.execute(
-            "INSERT OR REPLACE INTO embedding_cache "
-            "(content_hash, vector, model_name) VALUES (?, ?, ?)",
-            (text_hash, vector_json, EMBEDDING_MODEL),
-        )
-        await c.commit()
-
-    if conn:
-        await _execute(conn)
-    else:
-        async with await async_get_connection() as c:
-            await _execute(c)
-
-
-def get_gemini_client() -> genai.Client | None:
+def get_gemini_client():
     """
-    Retrieves a Gemini API client using the centralized config.
+    Returns a Gemini API client using the key from config or environment.
     """
-    api_key = settings.api_key
+    api_key = os.environ.get("GOOGLE_API_KEY") or settings.api_key
     if not api_key:
+        logger.warning("GOOGLE_API_KEY not found in environment or config.")
         return None
-
-    try:
-        return genai.Client(api_key=api_key)
-    except Exception as e:
-        log_error("Failed to initialize Gemini client", e)
-        return None
+    return genai.Client(api_key=api_key)
 
 
-async def compute_embedding(text: str, conn=None) -> list[float] | None:
-    """Computes embedding with local caching."""
-    logger.debug(
-        f"compute_embedding START text={text[:20]}... reuse_conn={conn is not None}"
-    )
-    text_hash = _get_text_hash(text)
-    cached = await _get_cached_embedding(text_hash, conn=conn)
-    if cached:
-        return cached
+async def compute_embeddings_bulk(texts: list[str]) -> list[list[float]]:
+    """
+    Computes embeddings for a list of strings.
+    Alias for compute_embedding to maintain backward compatibility with graph.py.
+    """
+    return await compute_embedding(texts)
 
+
+@retry_on_db_lock()
+async def compute_embedding(text_list: list[str]) -> list[list[float]]:
+    """
+    Computes text embeddings using the Gemini API (Async).
+    Uses a local SQLite cache to avoid redundant API calls.
+    """
     client = get_gemini_client()
     if not client:
-        return None
+        return [([0.0] * 768) for _ in text_list]
 
-    try:
-        # ASYNC TRANSITION: Use client.aio for non-blocking I/O
-        response = await client.aio.models.embed_content(
-            model=EMBEDDING_MODEL,
-            contents=text,
-            config={"output_dimensionality": DIMENSIONALITY},
-        )
-        vector = response.embeddings[0].values
-        await _save_to_cache(text_hash, vector, conn=conn)
-        return vector
-    except Exception as e:
-        log_error(f"Embedding computation failed for: {text[:50]}...", e)
-        return None
+    # 1. Filter out empty strings
+    valid_entries = []
+    for i, txt in enumerate(text_list):
+        if txt and txt.strip():
+            # Truncate extremely long texts
+            valid_entries.append((i, txt[:10000]))
 
+    if not valid_entries:
+        return [([0.0] * 768) for _ in text_list]
 
-async def compute_embeddings_bulk(texts: list[str]) -> list[list[float] | None]:
-    """Computes multiple embeddings in parallel with caching."""
-    results = []
+    # 2. Check cache
+    results = [None] * len(text_list)
     to_compute = []
-    indices = []
+    compute_map = []
 
-    for i, text in enumerate(texts):
-        text_hash = _get_text_hash(text)
-        cached = await _get_cached_embedding(text_hash)
-        if cached:
-            results.append(cached)
-        else:
-            results.append(None)
-            to_compute.append(text)
-            indices.append(i)
+    async with await async_get_connection() as conn:
+        for original_idx, txt in valid_entries:
+            content_hash = _get_text_hash(txt)
+            cursor = await conn.execute(
+                "SELECT vector FROM embedding_cache WHERE content_hash = ?",
+                (content_hash,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                results[original_idx] = json.loads(row[0])
+            else:
+                to_compute.append(txt)
+                compute_map.append((original_idx, content_hash))
 
     if not to_compute:
-        return results
+        return [r if r is not None else ([0.0] * 768) for r in results]
 
-    client = get_gemini_client()
-    if not client:
-        return results
-
+    # 3. Compute missing embeddings via Async API
     try:
-        # ASYNC TRANSITION: Use client.aio for non-blocking I/O
         response = await client.aio.models.embed_content(
             model=EMBEDDING_MODEL,
             contents=to_compute,
-            config={"output_dimensionality": DIMENSIONALITY},
+            config={"task_type": "RETRIEVAL_DOCUMENT"},
         )
-        for i, emb in enumerate(response.embeddings):
-            vector = emb.values
-            await _save_to_cache(_get_text_hash(to_compute[i]), vector)
-            results[indices[i]] = vector
-    except Exception as e:
-        log_error("Bulk embedding computation failed", e)
 
-    return results
+        async with await async_get_connection() as conn:
+            for idx, (original_idx, content_hash) in enumerate(compute_map):
+                vector = response.embeddings[idx].values
+                results[original_idx] = vector
+
+                # Update cache
+                await conn.execute(
+                    """
+                    INSERT OR REPLACE INTO embedding_cache
+                    (content_hash, vector, model_name)
+                    VALUES (?, ?, ?)
+                """,
+                    (content_hash, json.dumps(vector), EMBEDDING_MODEL),
+                )
+            await conn.commit()
+
+    except Exception as e:
+        log_error("Failed to compute embeddings via Gemini API", e)
+        # Fallback
+        for original_idx, _ in compute_map:
+            results[original_idx] = [0.0] * 768
+
+    # Ensure all slots are filled
+    return [r if r is not None else ([0.0] * 768) for r in results]
