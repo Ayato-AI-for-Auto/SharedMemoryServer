@@ -3,8 +3,9 @@ import os
 
 import aiofiles
 
+from shared_memory.config import settings
 from shared_memory.database import async_get_connection, update_access
-from shared_memory.embeddings import EMBEDDING_MODEL, compute_embeddings_bulk
+from shared_memory.embeddings import compute_embeddings_bulk
 from shared_memory.utils import (
     GlobalLock,
     get_bank_dir,
@@ -126,7 +127,7 @@ async def save_bank_files(
                 await conn.execute(
                     "INSERT OR REPLACE INTO embeddings "
                     "(content_id, vector, model_name) VALUES (?, ?, ?)",
-                    (filename, json.dumps(vector).encode("utf-8"), EMBEDDING_MODEL),
+                    (filename, json.dumps(vector).encode("utf-8"), settings.embedding_model),
                 )
 
             # 3. Disk Sync

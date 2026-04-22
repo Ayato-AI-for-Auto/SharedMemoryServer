@@ -11,8 +11,6 @@ from shared_memory.utils import get_logger, log_error
 
 logger = get_logger("embeddings")
 
-EMBEDDING_MODEL = "models/text-embedding-004"
-
 
 def _get_text_hash(text: str) -> str:
     """Returns MD5 hash of the text for caching."""
@@ -97,7 +95,7 @@ async def compute_embedding(
     # 3. Compute missing embeddings via Async API
     try:
         response = await client.aio.models.embed_content(
-            model=EMBEDDING_MODEL,
+            model=settings.embedding_model,
             contents=to_compute,
             config={"task_type": "RETRIEVAL_DOCUMENT"},
         )
@@ -112,7 +110,7 @@ async def compute_embedding(
                     (content_hash, vector, model_name)
                     VALUES (?, ?, ?)
                 """,
-                    (content_hash, json.dumps(vector), EMBEDDING_MODEL),
+                    (content_hash, json.dumps(vector), settings.embedding_model),
                 )
             await db_conn.commit()
 

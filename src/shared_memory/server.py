@@ -1,11 +1,39 @@
+import logging
+import os
+import sys
+
+# Save real stdout for MCP communication later
+_REAL_STDOUT = sys.stdout
+# Redirect sys.stdout to stderr to catch any noise from libraries during import
+sys.stdout = sys.stderr
+
+# Emergency logging setup - must be before other imports to catch their errors
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    filename="C:/Users/saiha/My_Service/programing/MCP/SharedMemoryServer/server.log",
+    filemode="a",
+)
+logger = logging.getLogger("shared_memory.server")
+logger.info("--- SERVER SCRIPT INITIALIZING (with stdout redirection) ---")
+logger.info(f"Python: {sys.executable}")
+logger.info(f"CWD: {os.getcwd()}")
+logger.info(f"PYTHONPATH: {sys.path}")
+
 from typing import Any
 
 from fastmcp import FastMCP
 
-from shared_memory import logic, thought_logic
-from shared_memory.database import close_all_connections, init_db
+# Delayed imports to catch potential errors in submodules
+try:
+    from shared_memory import logic, thought_logic
+    from shared_memory.database import close_all_connections, init_db
+    logger.info("Core submodules imported successfully")
+except Exception as e:
+    logger.error(f"CRITICAL: Failed to import submodules: {e}", exc_info=True)
+    sys.exit(1)
 
-# Create MCP server instance (Agent Data Plane)
+# Create MCP server instance
 mcp = FastMCP("SharedMemoryServer")
 
 
@@ -172,10 +200,28 @@ async def check_integrity():
     return await get_comprehensive_diagnostics()
 
 
+@mcp.tool()
+async def ping() -> str:
+    return "pong"
+
 def main():
     """Entry point for the MCP server."""
-    mcp.run()
-
+    # Restore stdout for MCP communication
+    sys.stdout = _REAL_STDOUT
+    
+    logger.info("SharedMemoryServer: main() called, stdout restored")
+    
+    # Silence internal MCP and FastMCP loggers to prevent any stray output
+    logging.getLogger("mcp").setLevel(logging.WARNING)
+    logging.getLogger("fastmcp").setLevel(logging.WARNING)
+    
+    try:
+        # transport="stdio" is default, show_banner=False is critical to avoid stdout pollution
+        logger.info("Handing over to mcp.run()...")
+        mcp.run(transport="stdio")
+    except Exception as e:
+        logger.exception("CRITICAL: Server crashed in mcp.run()")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

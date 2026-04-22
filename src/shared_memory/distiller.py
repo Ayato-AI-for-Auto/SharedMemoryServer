@@ -2,6 +2,7 @@ import json
 from typing import Any
 
 from shared_memory import logic
+from shared_memory.config import settings
 from shared_memory.embeddings import get_gemini_client
 from shared_memory.utils import log_error, log_info
 
@@ -64,31 +65,9 @@ async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str
     """
 
     try:
-        # DYNAMIC MODEL DISCOVERY: Find the correct model name automatically
-        try:
-            # ASYNC TRANSITION: Use client.aio for non-blocking list
-            # (Await the coroutine)
-            available_models = [m.name for m in await client.aio.models.list()]
-        except Exception as e:
-            log_error(
-                f"Failed to list models for session {session_id} (possibly invalid API key)",
-                e,
-            )
-            return
-
-        # Prefer gemini-3.1-flash-lite-preview if exists, else find any flash-lite
-        model_name = "gemini-3.1-flash-lite-preview"
-        target_model = f"models/{model_name}"
-        if target_model in available_models:
-            model_name = target_model
-        elif model_name not in available_models:
-            # Fallback search
-            fallback = [m for m in available_models if "flash" in m.lower() and "lite" in m.lower()]
-            model_name = fallback[0] if fallback else "models/gemini-2.0-flash"
-
-        # ASYNC TRANSITION: Use client.aio for non-blocking generation
+        # Use centralized model from settings
         response = await client.aio.models.generate_content(
-            model=model_name,
+            model=settings.generative_model,
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
@@ -131,3 +110,54 @@ async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str
         log_error(f"Failed to distill knowledge for session {session_id}", e)
         # Note: We don't re-raise here to avoid crashing the thought process
         # because distillation is a background/secondary task.
+
+
+async def incremental_distill_knowledge(session_id: str, thought: str):
+    """
+    Extracts atomic knowledge from a single thought step (Real-time).
+    Runs asynchronously to avoid blocking the reasoning flow.
+    """
+    client = get_gemini_client()
+    if not client:
+        return
+
+    prompt = f"""
+    Analyze the following SINGLE THOUGHT from a reasoning process.
+    If it contains definite facts, new entities, or relations, extract them.
+    If it is just internal monologue or planning without new information, return empty lists.
+
+    THOUGHT:
+    {thought}
+
+    OUTPUT FORMAT: Valid JSON matching the schema:
+    {{
+      "entities": [{"name": "Name", "entity_type": "type", "description": "desc"}],
+      "relations": [{"source": "A", "target": "B", "relation_type": "type", "justification": "why"}],
+      "observations": [{"entity_name": "Name", "content": "Fact"}]
+    }}
+    """
+    try:
+        response = await client.aio.models.generate_content(
+            model=settings.generative_model,
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+        extracted = json.loads(response.text)
+
+        entities = extracted.get("entities", [])
+        relations = extracted.get("relations", [])
+        observations = extracted.get("observations", [])
+
+        if entities or relations or observations:
+            from shared_memory import logic
+
+            await logic.save_memory_core(
+                entities=entities,
+                relations=relations,
+                observations=observations,
+                agent_id=f"incremental_distiller_{session_id}",
+            )
+            log_info(f"Incremental Distill: Saved {len(entities) + len(observations)} atoms.")
+    except Exception as e:
+        log_error(f"Incremental distillation failed for {session_id}", e)
+

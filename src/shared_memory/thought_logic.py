@@ -13,6 +13,7 @@ from shared_memory.database import (
 )
 from shared_memory.exceptions import DatabaseError
 from shared_memory.search import perform_keyword_search
+from shared_memory.salvage import salvage_related_knowledge
 from shared_memory.utils import (
     get_thoughts_db_path,
     log_error,
@@ -152,31 +153,20 @@ async def process_thought_core(
             row = await cursor.fetchone()
             history_length = row[0] if row else 0
 
-            cursor = await conn.execute(
-                "SELECT DISTINCT branch_id FROM thought_history "
-                "WHERE session_id = ? AND branch_id IS NOT NULL",
-                (session_id,),
-            )
             branches = [r[0] for r in await cursor.fetchall()]
 
-            # 5. Distillation
-            if not next_thought_needed:
-                from shared_memory.distiller import auto_distill_knowledge
+            await conn.commit()
 
-                history = await get_thought_history(session_id)
-                await auto_distill_knowledge(session_id, history)
-                await conn.execute(
-                    "UPDATE thought_history SET distilled = 1 WHERE session_id = ?",
-                    (session_id,),
-                )
-                await conn.commit()
+        # 6. Salvage & Accretion (The Synergy)
+        # 6.1 Accretion: Asynchronously extract and save new knowledge from this thought
+        from shared_memory.distiller import incremental_distill_knowledge
+        asyncio.create_task(incremental_distill_knowledge(session_id, thought))
 
-        # 6. Knowledge Injection
-        related_knowledge = await perform_keyword_search(
-            thought, limit=3, exclude_session_id=session_id
-        )
+        # 6.2 Salvage: Synchronously retrieve and rerank related past knowledge
+        history = await get_thought_history(session_id)
+        related_knowledge = await salvage_related_knowledge(thought, session_id, history)
 
-        # 6.1 Traceability: Record search results in metadata
+        # 6.3 Traceability: Record search results in metadata
         async with await async_get_thoughts_connection() as conn:
             search_meta = {
                 "hits_count": len(related_knowledge),
@@ -194,6 +184,19 @@ async def process_thought_core(
         # 7. Opportunistic Recovery: Disabled during tests to prevent GHA hangs
         if "PYTEST_CURRENT_TEST" not in os.environ:
             asyncio.create_task(trigger_opportunistic_recovery())
+
+            # 8. Final Distillation (Session Wrap-up)
+            if not next_thought_needed:
+                from shared_memory.distiller import auto_distill_knowledge
+                # Ensure the complete history is analyzed one last time for synthesis
+                history = await get_thought_history(session_id)
+                await auto_distill_knowledge(session_id, history)
+                async with await async_get_thoughts_connection() as conn:
+                    await conn.execute(
+                        "UPDATE thought_history SET distilled = 1 WHERE session_id = ?",
+                        (session_id,),
+                    )
+                    await conn.commit()
 
         return {
             "thoughtNumber": thought_number,

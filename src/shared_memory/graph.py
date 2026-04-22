@@ -2,9 +2,9 @@ import json
 from datetime import datetime
 from typing import Any
 
+from shared_memory.config import settings
 from shared_memory.database import async_get_connection
 from shared_memory.embeddings import (
-    EMBEDDING_MODEL,
     compute_embeddings_bulk,
     get_gemini_client,
 )
@@ -162,7 +162,7 @@ async def save_entities(
         new_data = json.dumps({"name": name, "type": e_type, "desc": desc})
         meta = json.dumps(
             {
-                "model": EMBEDDING_MODEL if vector else None,
+                "model": settings.embedding_model if vector else None,
                 "has_vector": bool(vector),
                 "conflict_info": None,
                 "timestamp": datetime.now().isoformat(),
@@ -179,7 +179,7 @@ async def save_entities(
             await conn.execute(
                 "INSERT OR REPLACE INTO embeddings "
                 "(content_id, vector, model_name) VALUES (?, ?, ?)",
-                (name, json.dumps(vector).encode("utf-8"), EMBEDDING_MODEL),
+                (name, json.dumps(vector).encode("utf-8"), settings.embedding_model),
             )
         success_count += 1
 
