@@ -8,10 +8,15 @@ _REAL_STDOUT = sys.stdout
 sys.stdout = sys.stderr
 
 # Emergency logging setup - must be before other imports to catch their errors
+# Ensure logs directory exists
+LOG_DIR = "C:/Users/saiha/My_Service/programing/MCP/SharedMemoryServer/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "server.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filename="C:/Users/saiha/My_Service/programing/MCP/SharedMemoryServer/server.log",
+    filename=LOG_FILE,
     filemode="a",
 )
 logger = logging.getLogger("shared_memory.server")

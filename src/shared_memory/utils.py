@@ -55,7 +55,7 @@ def get_db_path() -> str:
     if db_path:
         return os.path.abspath(db_path)
 
-    home = os.environ.get("SHARED_MEMORY_HOME", ".")
+    home = os.environ.get("SHARED_MEMORY_HOME", "data")
     return os.path.abspath(os.path.join(home, "knowledge.db"))
 
 
@@ -65,7 +65,7 @@ def get_thoughts_db_path() -> str:
     if db_path:
         return os.path.abspath(db_path)
 
-    home = os.environ.get("SHARED_MEMORY_HOME", ".")
+    home = os.environ.get("SHARED_MEMORY_HOME", "data")
     return os.path.abspath(os.path.join(home, "thoughts.db"))
 
 
@@ -75,7 +75,7 @@ def get_bank_dir() -> str:
     if bank_dir:
         return os.path.abspath(bank_dir)
 
-    home = os.environ.get("SHARED_MEMORY_HOME", ".")
+    home = os.environ.get("SHARED_MEMORY_HOME", "data")
     return os.path.abspath(os.path.join(home, "bank"))
 
 
@@ -138,7 +138,7 @@ class PathResolver:
         home = os.environ.get("SHARED_MEMORY_HOME")
         if home:
             return os.path.abspath(home)
-        return os.path.abspath(".shared_memory")
+        return os.path.abspath("data")
 
 
 # Intra-process Global Locks

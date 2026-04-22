@@ -12,14 +12,8 @@ wheels/
 # Data files (Strict privacy)
 *.db
 audit_test.db
-memory-bank/
-memory-bank-*/
-
 # Local config & Logs
 .env
+logs/
+data/
 *.log
-test_out.txt
-verify_out.txt
-
-# SharedMemoryServer local data
-.shared_memory/
