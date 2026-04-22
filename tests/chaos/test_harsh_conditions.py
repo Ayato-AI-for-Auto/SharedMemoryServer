@@ -1,4 +1,3 @@
-
 import aiosqlite
 import pytest
 

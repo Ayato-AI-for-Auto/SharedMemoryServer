@@ -2,6 +2,8 @@ import logging
 import os
 import sys
 
+# ruff: noqa: E402
+
 # Save real stdout for MCP communication later
 _REAL_STDOUT = sys.stdout
 # Redirect sys.stdout to stderr to catch any noise from libraries during import
@@ -33,6 +35,7 @@ from fastmcp import FastMCP
 try:
     from shared_memory import logic, thought_logic
     from shared_memory.database import close_all_connections, init_db
+
     logger.info("Core submodules imported successfully")
 except Exception as e:
     logger.error(f"CRITICAL: Failed to import submodules: {e}", exc_info=True)
@@ -209,24 +212,26 @@ async def check_integrity():
 async def ping() -> str:
     return "pong"
 
+
 def main():
     """Entry point for the MCP server."""
     # Restore stdout for MCP communication
     sys.stdout = _REAL_STDOUT
-    
+
     logger.info("SharedMemoryServer: main() called, stdout restored")
-    
+
     # Silence internal MCP and FastMCP loggers to prevent any stray output
     logging.getLogger("mcp").setLevel(logging.WARNING)
     logging.getLogger("fastmcp").setLevel(logging.WARNING)
-    
+
     try:
         # transport="stdio" is default, show_banner=False is critical to avoid stdout pollution
         logger.info("Handing over to mcp.run()...")
         mcp.run(transport="stdio")
-    except Exception as e:
+    except Exception:
         logger.exception("CRITICAL: Server crashed in mcp.run()")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

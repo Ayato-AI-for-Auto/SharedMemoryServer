@@ -132,7 +132,9 @@ async def incremental_distill_knowledge(session_id: str, thought: str):
     OUTPUT FORMAT: Valid JSON matching the schema:
     {{
       "entities": [{"name": "Name", "entity_type": "type", "description": "desc"}],
-      "relations": [{"source": "A", "target": "B", "relation_type": "type", "justification": "why"}],
+      "relations": [
+        {"source": "A", "target": "B", "relation_type": "type", "justification": "why"}
+      ],
       "observations": [{"entity_name": "Name", "content": "Fact"}]
     }}
     """
@@ -160,4 +162,3 @@ async def incremental_distill_knowledge(session_id: str, thought: str):
             log_info(f"Incremental Distill: Saved {len(entities) + len(observations)} atoms.")
     except Exception as e:
         log_error(f"Incremental distillation failed for {session_id}", e)
-

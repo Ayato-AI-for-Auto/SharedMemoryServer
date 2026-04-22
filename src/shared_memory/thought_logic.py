@@ -12,7 +12,6 @@ from shared_memory.database import (
     retry_on_db_lock,
 )
 from shared_memory.exceptions import DatabaseError
-from shared_memory.search import perform_keyword_search
 from shared_memory.salvage import salvage_related_knowledge
 from shared_memory.utils import (
     get_thoughts_db_path,
@@ -160,6 +159,7 @@ async def process_thought_core(
         # 6. Salvage & Accretion (The Synergy)
         # 6.1 Accretion: Asynchronously extract and save new knowledge from this thought
         from shared_memory.distiller import incremental_distill_knowledge
+
         asyncio.create_task(incremental_distill_knowledge(session_id, thought))
 
         # 6.2 Salvage: Synchronously retrieve and rerank related past knowledge
@@ -188,6 +188,7 @@ async def process_thought_core(
             # 8. Final Distillation (Session Wrap-up)
             if not next_thought_needed:
                 from shared_memory.distiller import auto_distill_knowledge
+
                 # Ensure the complete history is analyzed one last time for synthesis
                 history = await get_thought_history(session_id)
                 await auto_distill_knowledge(session_id, history)

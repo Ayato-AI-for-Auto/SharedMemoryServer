@@ -27,7 +27,9 @@ async def salvage_related_knowledge(
         for ent in graph_data.get("entities", []):
             candidates.append({"type": "entity", "id": ent["name"], "content": ent["description"]})
         for obs in graph_data.get("observations", []):
-            candidates.append({"type": "observation", "id": obs["entity"], "content": obs["content"]})
+            candidates.append(
+                {"type": "observation", "id": obs["entity"], "content": obs["content"]}
+            )
         # Flatten bank data
         for filename, content in bank_data.items():
             candidates.append({"type": "bank_file", "id": filename, "content": content[:1000]})
@@ -49,8 +51,10 @@ async def salvage_related_knowledge(
 
         prompt = f"""
         You are a Knowledge Re-ranking Engine.
-        Based on the CURRENT THOUGHT and RECENT HISTORY, select the top 5 most relevant items from the CANDIDATE LIST.
-        Focus on information that provides critical context, facts, or design patterns needed for the current reasoning step.
+        Based on the CURRENT THOUGHT and RECENT HISTORY, select the top 5 most relevant items
+        from the CANDIDATE LIST.
+        Focus on information that provides critical context, facts, or design patterns
+        needed for the current reasoning step.
 
         CURRENT THOUGHT:
         {thought}
@@ -81,7 +85,9 @@ async def salvage_related_knowledge(
                 return candidates[:3]
 
             reranked = [candidates[i] for i in selected_indices if 0 <= i < len(candidates)]
-            logger.info(f"Salvage: Successfully re-ranked {len(reranked)} items for session {session_id}")
+            logger.info(
+                f"Salvage: Successfully re-ranked {len(reranked)} items for session {session_id}"
+            )
             return reranked
         except Exception:
             # Fallback if JSON parsing fails
