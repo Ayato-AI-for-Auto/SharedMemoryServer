@@ -1,6 +1,8 @@
 import logging
 import os
 import sys
+import argparse
+import asyncio
 
 # ruff: noqa: E402
 
@@ -22,10 +24,7 @@ logging.basicConfig(
     filemode="a",
 )
 logger = logging.getLogger("shared_memory.server")
-logger.info("--- SERVER SCRIPT INITIALIZING (with stdout redirection) ---")
-logger.info(f"Python: {sys.executable}")
-logger.info(f"CWD: {os.getcwd()}")
-logger.info(f"PYTHONPATH: {sys.path}")
+logger.info("--- SERVER SCRIPT INITIALIZING (Robust Mode) ---")
 
 from typing import Any
 
@@ -44,24 +43,44 @@ except Exception as e:
 # Create MCP server instance
 mcp = FastMCP("SharedMemoryServer")
 
+# Global initialization state
+_INITIALIZED = False
 
-# ==========================================
-# LIFESPAN & INITIALIZATION
-# ==========================================
+
+async def _background_init():
+    """Heavy lifting initialization in the background."""
+    global _INITIALIZED
+    try:
+        logger.info("Starting background initialization (DB, Graphs)...")
+        await init_db()
+        await thought_logic.init_thoughts_db()
+        _INITIALIZED = True
+        logger.info("Background initialization COMPLETE.")
+    except Exception as e:
+        logger.error(f"Background initialization FAILED: {e}", exc_info=True)
+
+
+async def ensure_initialized():
+    """Wait for background initialization if it's still running."""
+    if not _INITIALIZED:
+        logger.info("Tool called before initialization finished. Waiting...")
+        while not _INITIALIZED:
+            await asyncio.sleep(0.1)
 
 
 @mcp.lifespan()
 async def lifespan(mcp_instance: FastMCP):
     """
     Handles server startup and shutdown.
-    Ensures databases are initialized before tools are called.
+    Ensures handshake is fast by moving DB init to background.
     """
-    await init_db()
-    await thought_logic.init_thoughts_db()
+    # Start init in background, don't wait here to avoid blocking the handshake
+    asyncio.create_task(_background_init())
 
     yield
 
     # CLEANUP: Close persistent singleton connections on shutdown
+    logger.info("Shutting down server, closing connections...")
     await close_all_connections()
 
 
@@ -89,6 +108,7 @@ async def save_memory(
         1. Dictionary: { "filename.md": "content" }
         2. List of objects: [ { "filename": "filename.md", "content": "content" } ]
     """
+    await ensure_initialized()
     return await logic.save_memory_core(entities, relations, observations, bank_files, agent_id)
 
 
@@ -98,6 +118,7 @@ async def read_memory(query: str | None = None):
     Retrieves knowledge from the graph and memory bank.
     Uses hybrid search (Semantic + Keyword) if a query is provided.
     """
+    await ensure_initialized()
     return await logic.read_memory_core(query)
 
 
@@ -107,9 +128,8 @@ async def get_graph_data(query: str = None) -> dict[str, Any] | str:
     Retrieves knowledge from the graph database.
     Optionally filters graph data based on a query.
     """
+    await ensure_initialized()
     try:
-        await init_db()
-        await thought_logic.init_thoughts_db()
         return await logic.graph.get_graph_data(query)
     except Exception as e:
         return f"Database Error: Failed to retrieve graph data. {e}"
@@ -118,6 +138,7 @@ async def get_graph_data(query: str = None) -> dict[str, Any] | str:
 @mcp.tool()
 async def synthesize_entity(entity_name: str):
     """Aggregates all known info about an entity into a master summary."""
+    await ensure_initialized()
     return await logic.synthesize_entity(entity_name)
 
 
@@ -128,6 +149,7 @@ async def manage_knowledge_activation(ids: list[str], status: str):
     - status: 'active' (default/searchable), 'inactive' (hidden), or 'archived' (legacy).
     Use this to toggle knowledge OFF/ON without destructive deletion.
     """
+    await ensure_initialized()
     return await logic.manage_knowledge_activation_core(ids, status)
 
 
@@ -137,6 +159,7 @@ async def list_inactive_knowledge():
     Lists all knowledge assets that are currently inactive or archived.
     Useful for reviewing what information has been sidelined or for potential reactivation.
     """
+    await ensure_initialized()
     return await logic.list_inactive_knowledge_core()
 
 
@@ -169,6 +192,7 @@ async def sequential_thinking(
     code changes to ensure traceability. Summarize your reasoning in the
     commit message.
     """
+    await ensure_initialized()
     return await thought_logic.process_thought_core(
         thought,
         thought_number,
@@ -189,6 +213,7 @@ async def get_insights(format: str = "markdown"):
     - format: 'markdown' (人間向けレポート) または 'json' (プログラム用データ)
     ビジネス上のROIやトークン削減量、知識の再利用率を確認するために使用します。
     """
+    await ensure_initialized()
     from shared_memory.insights import InsightEngine
 
     metrics = await InsightEngine.get_summary_metrics()
@@ -203,6 +228,7 @@ async def check_integrity():
     Performs a comprehensive integrity check of the LogicHive system,
     including DB status, Vector store synchronization, and Environment pools.
     """
+    await ensure_initialized()
     from shared_memory.health import get_comprehensive_diagnostics
 
     return await get_comprehensive_diagnostics()
@@ -214,20 +240,35 @@ async def ping() -> str:
 
 
 def main():
-    """Entry point for the MCP server."""
-    # Restore stdout for MCP communication
-    sys.stdout = _REAL_STDOUT
+    """Entry point for the MCP server with enhanced stability and SSE support."""
+    parser = argparse.ArgumentParser(description="SharedMemoryServer MCP")
+    parser.add_argument("--sse", action="store_true", help="Run with SSE transport")
+    parser.add_argument("--port", type=int, default=8000, help="Port for SSE server")
+    args = parser.parse_args()
 
-    logger.info("SharedMemoryServer: main() called, stdout restored")
+    # Determine transport
+    use_sse = args.sse or os.environ.get("MCP_TRANSPORT") == "sse"
+
+    if not use_sse:
+        # Restore stdout for MCP communication ONLY in stdio mode
+        sys.stdout = _REAL_STDOUT
+        # Ensure output is unbuffered to prevent connection hangs
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(line_buffering=True)
+        logger.info("SharedMemoryServer: Starting in STDIO mode")
+    else:
+        logger.info(f"SharedMemoryServer: Starting in SSE mode on port {args.port}")
 
     # Silence internal MCP and FastMCP loggers to prevent any stray output
     logging.getLogger("mcp").setLevel(logging.WARNING)
     logging.getLogger("fastmcp").setLevel(logging.WARNING)
 
     try:
-        # transport="stdio" is default, show_banner=False is critical to avoid stdout pollution
-        logger.info("Handing over to mcp.run()...")
-        mcp.run(transport="stdio")
+        if use_sse:
+            mcp.run(transport="sse")
+        else:
+            # transport="stdio" is default
+            mcp.run(transport="stdio")
     except Exception:
         logger.exception("CRITICAL: Server crashed in mcp.run()")
         sys.exit(1)
