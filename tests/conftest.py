@@ -56,6 +56,7 @@ def fake_llm():
         patch("shared_memory.embeddings.get_gemini_client", return_value=client),
         patch("shared_memory.distiller.get_gemini_client", return_value=client),
         patch("shared_memory.graph.get_gemini_client", return_value=client),
+        patch("shared_memory.salvage.get_gemini_client", return_value=client),
     ]
 
     for p in patches:
@@ -111,6 +112,7 @@ def mock_llm(request):
         patch("shared_memory.embeddings.get_gemini_client", return_value=client),
         patch("shared_memory.distiller.get_gemini_client", return_value=client),
         patch("shared_memory.graph.get_gemini_client", return_value=client),
+        patch("shared_memory.salvage.get_gemini_client", return_value=client),
     ]
 
     for p in patches:
@@ -124,13 +126,14 @@ def mock_llm(request):
 
 
 @pytest.fixture(autouse=True)
-def mock_gemini_globally(mock_llm):
-    return mock_llm
-
-
-@pytest.fixture(autouse=True)
-def mock_gemini(mock_llm):
-    return mock_llm
+def auto_mock_llm(request):
+    """
+    Automatically provide mock_llm to non-unit tests.
+    Unit tests must explicitly use 'fake_llm'.
+    """
+    if "unit" in request.node.keywords:
+        return None
+    return request.getfixturevalue("mock_llm")
 
 
 @contextmanager

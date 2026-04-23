@@ -23,7 +23,6 @@ def get_gemini_client():
     """
     api_key = os.environ.get("GOOGLE_API_KEY") or settings.api_key
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not found in environment or config.")
         return None
     return genai.Client(api_key=api_key)
 

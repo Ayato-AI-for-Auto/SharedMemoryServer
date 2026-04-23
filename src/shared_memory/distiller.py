@@ -131,11 +131,11 @@ async def incremental_distill_knowledge(session_id: str, thought: str):
 
     OUTPUT FORMAT: Valid JSON matching the schema:
     {{
-      "entities": [{"name": "Name", "entity_type": "type", "description": "desc"}],
+      "entities": [{{ "name": "Name", "entity_type": "type", "description": "desc" }}],
       "relations": [
-        {"source": "A", "target": "B", "relation_type": "type", "justification": "why"}
+        {{ "source": "A", "target": "B", "relation_type": "type", "justification": "why" }}
       ],
-      "observations": [{"entity_name": "Name", "content": "Fact"}]
+      "observations": [{{ "entity_name": "Name", "content": "Fact" }}]
     }}
     """
     try:
