@@ -109,9 +109,9 @@ async def lifespan(mcp_instance: FastMCP):
 
 @mcp.tool()
 async def save_memory(
-    entities: list[dict[str, Any]] | None = None,
+    entities: list[dict[str, Any] | str] | None = None,
     relations: list[dict[str, Any]] | None = None,
-    observations: list[dict[str, Any]] | None = None,
+    observations: list[dict[str, Any] | str] | None = None,
     bank_files: Any | None = None,
     agent_id: str = "default_agent",
 ) -> str:

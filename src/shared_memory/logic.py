@@ -73,10 +73,10 @@ def normalize_bank_files(bank_files: Any) -> dict[str, str]:
 
 @retry_on_db_lock()
 async def save_memory_core(
-    entities: list[dict[str, Any]] | None = None,
+    entities: list[dict[str, Any] | str] | None = None,
     relations: list[dict[str, Any]] | None = None,
-    observations: list[dict[str, Any]] | None = None,
-    bank_files: dict[str, str] | list[dict[str, str]] | None = None,
+    observations: list[dict[str, Any] | str] | None = None,
+    bank_files: dict[str, str] | list[dict[str, str]] | Any | None = None,
     agent_id: str = "default_agent",
 ) -> str:
     """
@@ -91,9 +91,16 @@ async def save_memory_core(
         log_error(msg)
         return msg
 
-    entities = entities or []
+    # --- Normalization (Handle string shorthands) ---
+    entities = [
+        {"name": e, "entity_type": "concept", "description": ""} if isinstance(e, str) else e
+        for e in (entities or [])
+    ]
+    observations = [
+        {"content": obs, "entity_name": ""} if isinstance(obs, str) else obs
+        for obs in (observations or [])
+    ]
     relations = relations or []
-    observations = observations or []
     bank_files = normalize_bank_files(bank_files)
 
     # --- Phase 1: Pre-compute AI results ---
