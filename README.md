@@ -102,25 +102,42 @@ uv pip install -e .
 ```
 
 ### 2. Execution
+Operational scripts are located in the `bin/` directory for a clean workspace:
+- `bin/stdio.bat`: Start Server (STDIO)
+- `bin/sse.bat`: Start Server (SSE - High Availability)
+- `bin/admin.bat`: Start Admin Dashboard
+- `bin/test.bat`: Run Health Check (16-test suite)
+- `bin/register.bat`: Register MCP with IDEs
+
+#### 🛡️ Connection Stability & High Reliability Architecture
+SharedMemoryServer uses a **Lifespan-based Background Initialization** pattern to ensure 100% connection reliability:
+
+1.  **Instant Handshake**: The server responds to MCP `initialize` requests immediately, preventing IDE/Client timeouts.
+2.  **Background DB Warm-up**: Heavy database migrations and Knowledge Graph indexing happen in the background.
+3.  **Tool Gating**: If a tool is called before initialization is complete, it will safely wait for the background task to finish.
+4.  **Failure Awareness**: If initialization fails, tools raise a descriptive `DatabaseError` instead of hanging.
+
+#### 🔧 Troubleshooting: When the Server "Freezes"
+If you experience a tool hang (no response), follow these steps:
+
+1.  **Check the Logs**: View `logs/server.log`. It contains detailed initialization progress.
+    - If you see `Database locked. Retrying...`, another process is holding the DB lock.
+2.  **Kill Orphaned Processes**: Sometimes, rapid IDE restarts leave orphaned `python` processes.
+    - **Windows (PowerShell)**: `Get-Process python | Stop-Process -Force`
+    - **Linux/macOS**: `pkill -f shared-memory`
+3.  **Use SSE Mode**: For maximum stability in Cursor/Claude, use the SSE transport.
+    ```bash
+    uv run shared-memory --sse --port 8377
+    ```
+4.  **Integrity Check**: Run the built-in integrity tool (if accessible) or check the DB files directly.
+
+### 3. Testing
+We maintain a 16-test suite covering Chaos, System, and Unit scenarios.
 ```bash
-uv run shared-memory         # Start Agent Server (STDIO mode)
-uv run shared-memory-admin   # Start Admin Server
+uv run pytest tests -v
 ```
 
-#### 🛡️ Connection Stability & Transport (Professional Grade)
-SharedMemoryServer supports multiple transport modes to ensure 100% connection reliability:
-
-- **STDIO Mode (Default)**: Best for quick local integration. 
-  - *Robustness*: Automatically suppresses library noise and uses asynchronous initialization to prevent handshake timeouts.
-- **SSE Mode (High Availability)**: Best for production-grade stability. 
-  - *Activation*: Run with `--sse` or set `MCP_TRANSPORT=sse`. 
-  - *Benefits*: Decouples communication from terminal output, eliminating "Broken Pipe" errors caused by stray logs.
-
-```bash
-uv run shared-memory --sse --port 8000
-```
-
-### 3. Integration
+### 4. Integration
 ```bash
 uv run shared-memory-register # Register with Cursor/Claude
 ```

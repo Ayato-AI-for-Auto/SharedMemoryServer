@@ -30,13 +30,16 @@ async def test_database_busy_simulation(fake_llm):
     """異常系: データベースがロックされている状況をシミュレート (Adversarial)"""
     # aiosqlite.connect ではなく、より上位の初期化関数をモックして失敗させる
     with patch("shared_memory.server.init_db", side_effect=Exception("database is locked")):
-        server._INITIALIZED = False
+        server._INITIALIZED_EVENT.clear()
+        server._INIT_ERROR = None
         await server._background_init()
         
-        assert server._INITIALIZED is False
-        # ensure_initialized がタイムアウトすることを確認
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(server.read_memory(query="test"), timeout=0.5)
+        assert server._INITIALIZED_EVENT.is_set()
+        assert server._INIT_ERROR is not None
+        
+        from shared_memory.exceptions import DatabaseError
+        with pytest.raises(DatabaseError):
+            await server.read_memory(query="test")
 
 @pytest.mark.asyncio
 @pytest.mark.chaos

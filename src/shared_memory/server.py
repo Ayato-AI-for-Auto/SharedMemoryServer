@@ -44,28 +44,34 @@ except Exception as e:
 mcp = FastMCP("SharedMemoryServer")
 
 # Global initialization state
-_INITIALIZED = False
+_INITIALIZED_EVENT = asyncio.Event()
+_INIT_ERROR = None
 
 
 async def _background_init():
     """Heavy lifting initialization in the background."""
-    global _INITIALIZED
+    global _INIT_ERROR
     try:
         logger.info("Starting background initialization (DB, Graphs)...")
         await init_db()
         await thought_logic.init_thoughts_db()
-        _INITIALIZED = True
         logger.info("Background initialization COMPLETE.")
     except Exception as e:
+        _INIT_ERROR = e
         logger.error(f"Background initialization FAILED: {e}", exc_info=True)
+    finally:
+        _INITIALIZED_EVENT.set()
 
 
 async def ensure_initialized():
     """Wait for background initialization if it's still running."""
-    if not _INITIALIZED:
+    if not _INITIALIZED_EVENT.is_set():
         logger.info("Tool called before initialization finished. Waiting...")
-        while not _INITIALIZED:
-            await asyncio.sleep(0.1)
+        await _INITIALIZED_EVENT.wait()
+    
+    if _INIT_ERROR:
+        from shared_memory.exceptions import DatabaseError
+        raise DatabaseError(f"System failed to initialize: {_INIT_ERROR}")
 
 
 @mcp.lifespan()
@@ -243,7 +249,7 @@ def main():
     """Entry point for the MCP server with enhanced stability and SSE support."""
     parser = argparse.ArgumentParser(description="SharedMemoryServer MCP")
     parser.add_argument("--sse", action="store_true", help="Run with SSE transport")
-    parser.add_argument("--port", type=int, default=8000, help="Port for SSE server")
+    parser.add_argument("--port", type=int, default=8377, help="Port for SSE server")
     args = parser.parse_args()
 
     # Determine transport
@@ -265,7 +271,7 @@ def main():
 
     try:
         if use_sse:
-            mcp.run(transport="sse")
+            mcp.run(transport="sse", port=args.port)
         else:
             # transport="stdio" is default
             mcp.run(transport="stdio")

@@ -28,17 +28,21 @@ def retry_on_db_lock(max_retries=15, initial_delay=0.1):
             while retries < max_retries:
                 try:
                     return await func(*args, **kwargs)
-                except (aiosqlite.OperationalError, DatabaseError) as e:
+                except (aiosqlite.OperationalError, DatabaseError, sqlite3.OperationalError) as e:
                     error_str = str(e).lower()
                     if "database is locked" in error_str:
                         retries += 1
+                        delay = min(initial_delay * (2 ** (retries - 1)), 1.0) + random.uniform(
+                            0, 0.1
+                        )
+                        logger.warning(
+                            f"Database locked. Retrying {retries}/{max_retries} in {delay:.2f}s... "
+                            f"(Function: {func.__name__})"
+                        )
                         if retries == max_retries:
                             raise DatabaseLockedError(
                                 f"Database remained locked after {max_retries} attempts."
                             ) from e
-                        delay = min(initial_delay * (2 ** (retries - 1)), 1.0) + random.uniform(
-                            0, 0.1
-                        )
                         await asyncio.sleep(delay)
                     else:
                         raise e
@@ -172,15 +176,15 @@ async def init_db(force: bool = False):
     if _DB_INITIALIZED:
         return
 
+    logger.info(f"Initializing main database (force={force})...")
     async with await _async_get_connection_raw(get_db_path()) as conn:
         # Integrity Check: verify file is a database
         try:
             await conn.execute("SELECT 1")
         except (aiosqlite.DatabaseError, sqlite3.DatabaseError):
-            # This happens if it's not a DB file.
-            # We don't catch it here if we want pytest to catch it,
-            # but we need to ensure it's not swallowed by the initializer.
             raise
+        
+        logger.info("Main DB connection established. Creating tables...")
         cursor = await conn.cursor()
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS entities (
@@ -354,6 +358,7 @@ async def init_db(force: bool = False):
             log_error("Critical failure: 'entities' table missing after init_db.")
         else:
             _DB_INITIALIZED = True
+            logger.info("Main database initialization successful.")
 
 
 @retry_on_db_lock()

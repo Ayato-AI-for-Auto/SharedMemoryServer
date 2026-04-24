@@ -36,6 +36,7 @@ async def init_thoughts_db(force: bool = False):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     from shared_memory.database import _async_get_connection_raw
 
+    log_info(f"Initializing thoughts database at {db_path}...")
     async with await _async_get_connection_raw(db_path, is_thoughts=True) as conn:
         # Tables for thoughts
         await conn.execute("""
@@ -73,6 +74,7 @@ async def init_thoughts_db(force: bool = False):
         )
         await conn.commit()
         _THOUGHTS_INITIALIZED = True
+        log_info("Thoughts database initialization successful.")
 
 
 @retry_on_db_lock()

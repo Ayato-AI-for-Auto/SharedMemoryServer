@@ -13,7 +13,7 @@ async def test_mcp_tool_session_flow(mock_llm):
     """
     # 背景の初期化を待たずに済むように、テスト内では初期化済みフラグを立てるか、
     # 実際に応答を待機するように ensure_initialized を利用する
-    server._INITIALIZED = True # 手動でパス（conftestでDBは初期化済みのため）
+    server._INITIALIZED_EVENT.set() # 手動でパス（conftestでDBは初期化済みのため）
 
     # 1. 保存
     save_resp = await server.save_memory(

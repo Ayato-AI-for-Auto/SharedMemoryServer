@@ -24,6 +24,11 @@ async def setup_teardown_db(request):
     await init_db(force=True)
     await init_thoughts_db(force=True)
 
+    # Reset server initialization state
+    from shared_memory import server
+    server._INITIALIZED_EVENT.clear()
+    server._INIT_ERROR = None
+
     yield
 
     # Teardown: Close singleton connections before rmtree (Windows requirement)
