@@ -8,7 +8,9 @@ from shared_memory.embeddings import (
     compute_embeddings_bulk,
     get_gemini_client,
 )
-from shared_memory.utils import log_error, mask_sensitive_data
+from shared_memory.utils import get_logger, log_error, mask_sensitive_data
+
+logger = get_logger("graph")
 
 
 async def check_conflict(entity_name: str, new_content: str, agent_id: str, conn=None):
@@ -21,6 +23,7 @@ async def check_conflict(entity_name: str, new_content: str, agent_id: str, conn
             log_error("Conflict check aborted: Gemini client not initialized (check API key)")
             return False, None
 
+        logger.info(f"Checking conflict for entity='{entity_name}'")
         if conn is None:
             async with await async_get_connection() as managed_conn:
                 return await _check_conflict_internal(
@@ -65,16 +68,19 @@ async def _check_conflict_internal(entity_name: str, new_content: str, agent_id:
         log_error("Failed to parse conflict check JSON", e)
         return False, None
     if data.get("conflict"):
+        reason = data.get("reason", "Unknown contradiction")
+        logger.warning(f"CONFLICT DETECTED in '{entity_name}': {reason}")
         # Log to DB
         await conn.execute(
             "INSERT INTO conflicts "
             "(entity_name, existing_content, new_content, reason, agent_id) "
             "VALUES (?, ?, ?, ?, ?)",
-            (entity_name, existing_text, new_content, data.get("reason"), agent_id),
+            (entity_name, existing_text, new_content, reason, agent_id),
         )
         await conn.commit()
-        return True, data.get("reason")
+        return True, reason
 
+    logger.debug(f"No conflict detected for '{entity_name}'")
     return False, None
 
 
@@ -183,9 +189,10 @@ async def save_entities(
             )
         success_count += 1
 
-    msg = f"Saved {success_count} entities"
+    msg = f"Saved {success_count} entities (agent={agent_id})"
     if results:
         msg += f" (Errors: {len(results)})"
+    logger.info(msg)
     return msg
 
 
@@ -235,9 +242,10 @@ async def save_relations(relations: list[dict[str, Any]], agent_id: str, conn):
                 ),
             )
 
-    msg = f"Saved {len(valid_relations)} relations"
+    msg = f"Saved {len(valid_relations)} relations (agent={agent_id})"
     if errors:
         msg += f" (Errors: {len(errors)})"
+    logger.info(msg)
     return msg
 
 
@@ -310,9 +318,10 @@ async def save_observations(
         )
         success_count += 1
 
-    msg = f"Saved {success_count} observations"
+    msg = f"Saved {success_count} observations (agent={agent_id})"
     if errors:
         msg += f" (Errors: {len(errors)})"
+    logger.info(msg)
     return msg, conflicts_to_report
 
 

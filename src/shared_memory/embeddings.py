@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import time
 from typing import Any
 
 from google import genai
@@ -61,7 +62,7 @@ async def compute_embedding(
         fallback = [([0.0] * 768) for _ in items]
         return fallback[0] if is_single else fallback
 
-    # 2. Check cache
+    logger.info(f"Computing embeddings for {len(items)} items...")
     results = [None] * len(items)
     to_compute = []
     compute_map = []
@@ -88,16 +89,20 @@ async def compute_embedding(
             await _process_cache(db)
 
     if not to_compute:
+        logger.info(f"All {len(items)} embeddings retrieved from CACHE.")
         final_results = [r if r is not None else ([0.0] * 768) for r in results]
         return final_results[0] if is_single else final_results
 
-    # 3. Compute missing embeddings via Async API
+    logger.info(f"Cache miss: computing {len(to_compute)} new embeddings...")
+    start_api = time.perf_counter()
     try:
         response = await client.aio.models.embed_content(
             model=settings.embedding_model,
             contents=to_compute,
             config={"task_type": "RETRIEVAL_DOCUMENT"},
         )
+        api_duration = time.perf_counter() - start_api
+        logger.info(f"Gemini API (Embeddings) COMPLETE. Duration: {api_duration:.2f}s")
 
         async def _save_cache(db_conn):
             for idx, (original_idx, content_hash) in enumerate(compute_map):

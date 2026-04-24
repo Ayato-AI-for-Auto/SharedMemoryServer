@@ -1,8 +1,8 @@
+import argparse
+import asyncio
 import logging
 import os
 import sys
-import argparse
-import asyncio
 
 # ruff: noqa: E402
 
@@ -65,6 +65,7 @@ async def _background_init():
 
 _INIT_STARTED = False
 
+
 def trigger_init():
     global _INIT_STARTED
     if not _INIT_STARTED:
@@ -80,9 +81,10 @@ async def ensure_initialized():
     if not _INITIALIZED_EVENT.is_set():
         logger.info("Tool called before initialization finished. Waiting...")
         await _INITIALIZED_EVENT.wait()
-    
+
     if _INIT_ERROR:
         from shared_memory.exceptions import DatabaseError
+
         raise DatabaseError(f"System failed to initialize: {_INIT_ERROR}")
 
 

@@ -6,7 +6,7 @@ import sys
 
 def run_command(cmd):
     print(f"Executing: {' '.join(cmd)}")
-    result = subprocess.run(cmd, shell=True)
+    result = subprocess.run(cmd, shell=True, check=False)
     if result.returncode != 0:
         print(f"Error executing command: {result.returncode}")
         sys.exit(1)

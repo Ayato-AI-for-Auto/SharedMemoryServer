@@ -26,6 +26,7 @@ async def setup_teardown_db(request):
 
     # Reset server initialization state
     from shared_memory import server
+
     server._INITIALIZED_EVENT.clear()
     server._INIT_ERROR = None
 

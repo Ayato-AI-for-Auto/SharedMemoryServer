@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from typing import Any
 
 import aiosqlite
@@ -104,10 +105,12 @@ async def save_memory_core(
     bank_files = normalize_bank_files(bank_files)
 
     # --- Phase 1: Pre-compute AI results ---
+    start_time = time.perf_counter()
     logger.info(
         f"Phase 1 (AI) START: {len(entities)} entities, {len(relations)} relations, "
         f"{len(observations)} observations, {len(bank_files)} bank files"
     )
+    ai_start_time = time.perf_counter()
 
     # 1.1 Prepare Embedding Inputs
     entity_texts = []
@@ -152,7 +155,8 @@ async def save_memory_core(
         logger.error(f"Phase 1 FAILED: {msg}", exc_info=True)
         log_error(msg)
         return msg
-    logger.info("Phase 1 (AI) COMPLETE")
+    ai_duration = time.perf_counter() - ai_start_time
+    logger.info(f"Phase 1 (AI) COMPLETE. Duration: {ai_duration:.2f}s")
 
     all_vectors = ai_results[0]
     raw_conflict_results = ai_results[1:]
@@ -174,6 +178,7 @@ async def save_memory_core(
 
     # --- Phase 2: Rapid DB Write ---
     logger.info("Phase 2 (DB) START")
+    db_start_time = time.perf_counter()
     try:
         async with await async_get_connection() as conn:
             logger.info("DB Connection ACQUIRED")
@@ -233,7 +238,12 @@ async def save_memory_core(
         logger.error(msg, exc_info=True)
         return msg
 
-    logger.info("save_memory_core SUCCESS")
+    db_duration = time.perf_counter() - db_start_time
+    total_duration = time.perf_counter() - start_time
+    logger.info(
+        f"save_memory_core SUCCESS. "
+        f"Total: {total_duration:.2f}s (AI: {ai_duration:.2f}s, DB: {db_duration:.2f}s)"
+    )
     return " | ".join(results)
 
 
@@ -241,7 +251,8 @@ async def read_memory_core(query: str | None = None) -> dict[str, Any] | str:
     """
     Core logic for reading memory.
     """
-    logger.info(f"read_memory_core START query={query}")
+    logger.info(f"read_memory_core START query='{query}'")
+    start_time = time.perf_counter()
     try:
         await init_db()
     except Exception as e:
@@ -253,7 +264,9 @@ async def read_memory_core(query: str | None = None) -> dict[str, Any] | str:
         else:
             graph_data = await graph.get_graph_data()
             bank_data = await bank.read_bank_data()
-        logger.info(f"read_memory_core COMPLETE query={query}")
+
+        duration = time.perf_counter() - start_time
+        logger.info(f"read_memory_core COMPLETE query='{query}' duration={duration:.2f}s")
         return {"graph": graph_data, "bank": bank_data}
     except aiosqlite.OperationalError as e:
         if "locked" in str(e).lower():

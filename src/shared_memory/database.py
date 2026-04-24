@@ -36,10 +36,15 @@ def retry_on_db_lock(max_retries=15, initial_delay=0.1):
                             0, 0.1
                         )
                         logger.warning(
-                            f"Database locked. Retrying {retries}/{max_retries} in {delay:.2f}s... "
-                            f"(Function: {func.__name__})"
+                            f"DATABASE LOCKED: Attempt {retries}/{max_retries}. "
+                            f"Waiting {delay:.2f}s before retry. "
+                            f"(Source: {func.__name__}, Error: {e})"
                         )
                         if retries == max_retries:
+                            logger.error(
+                                f"DATABASE FATAL: Max retries ({max_retries}) "
+                                f"exceeded for {func.__name__}."
+                            )
                             raise DatabaseLockedError(
                                 f"Database remained locked after {max_retries} attempts."
                             ) from e
@@ -76,13 +81,14 @@ class AsyncSQLiteConnection:
                         await _THOUGHTS_CONNECTION.execute("PRAGMA synchronous = NORMAL")
                     self.conn = _THOUGHTS_CONNECTION
                 else:
-                    if _MAIN_CONNECTION is None:
-                        _MAIN_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
-                        _MAIN_CONNECTION.row_factory = aiosqlite.Row
-                        await _MAIN_CONNECTION.execute("PRAGMA foreign_keys = ON")
-                        await _MAIN_CONNECTION.execute("PRAGMA journal_mode = WAL")
-                        await _MAIN_CONNECTION.execute("PRAGMA synchronous = NORMAL")
+                    logger.info(f"Establishing NEW singleton connection to: {self.db_path}")
+                    _MAIN_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
+                    _MAIN_CONNECTION.row_factory = aiosqlite.Row
+                    await _MAIN_CONNECTION.execute("PRAGMA foreign_keys = ON")
+                    await _MAIN_CONNECTION.execute("PRAGMA journal_mode = WAL")
+                    await _MAIN_CONNECTION.execute("PRAGMA synchronous = NORMAL")
                     self.conn = _MAIN_CONNECTION
+                    logger.info("Main connection successfully established and configured.")
 
             return self.conn
         except Exception as e:
@@ -181,10 +187,12 @@ async def init_db(force: bool = False):
         # Integrity Check: verify file is a database
         try:
             await conn.execute("SELECT 1")
-        except (aiosqlite.DatabaseError, sqlite3.DatabaseError):
+            logger.info("DB Integrity Check: PASSED.")
+        except (aiosqlite.DatabaseError, sqlite3.DatabaseError) as e:
+            logger.error(f"DB Integrity Check: FAILED. {e}")
             raise
-        
-        logger.info("Main DB connection established. Creating tables...")
+
+        logger.info("Starting table creation/verification sequence...")
         cursor = await conn.cursor()
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS entities (
@@ -366,8 +374,8 @@ async def update_access(content_id: str, conn=None):
     # Guard: Ensure DB is initialized before any access update
     await init_db()
     if conn is None:
-        async with await async_get_connection() as conn:
-            await conn.execute(
+        async with await async_get_connection() as managed_conn:
+            await managed_conn.execute(
                 """
                 INSERT INTO knowledge_metadata (
                     content_id, access_count, last_accessed,
@@ -381,7 +389,7 @@ async def update_access(content_id: str, conn=None):
                 """,
                 (content_id,),
             )
-            await conn.commit()
+            await managed_conn.commit()
     else:
         await conn.execute(
             """
@@ -429,5 +437,5 @@ async def log_search_stat(
     if conn is not None:
         await _execute(conn)
     else:
-        async with await async_get_connection() as conn:
-            await _execute(conn)
+        async with await async_get_connection() as managed_conn:
+            await _execute(managed_conn)

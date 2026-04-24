@@ -1,86 +1,35 @@
 [project]
-name = "sharedmemoryserver"
-version = "1.8.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "fastmcp",
-    "aiofiles",
-    "google-genai",
-    "numpy",
-    "ruff",
-    "aiosqlite",
-]
-
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "pytest-timeout",
-    "ragas>=0.1.0",
-    "pandas",
-    "datasets",
-    "langchain-google-genai",
-]
-
-[project.scripts]
-shared-memory = "shared_memory.server:main"
-shared-memory-register = "shared_memory.register:main"
-shared-memory-unregister = "shared_memory.unregister:main"
-shared-memory-admin = "shared_memory.admin_cli:main"
-shared-memory-admin-server = "shared_memory.admin_server:main"
+name = "shared-memory-server"
+version = "0.1.0"
+dependencies = []
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
-exclude = ["archive"]
+target-version = "py310"
 
 [tool.ruff.lint]
-select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "UP", # pyupgrade
+select = ["E", "F", "B", "I", "N", "UP", "PL"]
+ignore = [
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments
+    "PLR0915", # Too many statements
+    "PLC0415", # Local imports (used to avoid circular dependencies)
+    "PLR2004", # Magic values in comparisons
+    "PLW0603", # Global statement
+    "E402",    # Module level import not at top of file
 ]
-ignore = []
 
 [tool.ruff.lint.isort]
+combine-as-imports = true
 known-first-party = ["shared_memory"]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/shared_memory"]
-
-[tool.semantic_release]
-version_toml = [
-    "pyproject.toml:project.version",
-]
-version_variables = [
-    "src/shared_memory/__init__.py:__version__",
-]
-branch = "master"
-major_on_zero = false
-upload_to_repository = false
-upload_to_release = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-norecursedirs = [".*", "dist", "build"]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-    "ignore::UserWarning",
-]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "concurrency: marks tests that involve heavy concurrency",
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "system: System tests",
+    "chaos: Chaos/Failure tests",
 ]
-timeout = 300
+asyncio_default_fixture_loop_scope = "function"
