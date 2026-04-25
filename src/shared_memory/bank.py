@@ -3,15 +3,19 @@ import os
 
 import aiofiles
 
+from shared_memory.config import settings
 from shared_memory.database import async_get_connection, update_access
-from shared_memory.embeddings import EMBEDDING_MODEL, compute_embeddings_bulk
+from shared_memory.embeddings import compute_embeddings_bulk
 from shared_memory.utils import (
     GlobalLock,
     get_bank_dir,
+    get_logger,
     log_error,
     mask_sensitive_data,
     safe_path_join,
 )
+
+logger = get_logger("bank")
 
 BANK_FILES = {
     "projectBrief.md": "Core requirements and goals.",
@@ -36,14 +40,17 @@ async def initialize_bank():
             path = safe_path_join(bank_dir, filename)
             if not os.path.exists(path):
                 async with aiofiles.open(path, mode="w", encoding="utf-8") as f:
-                    await f.write(
-                        f"# {filename}\n\n{description}\n\n## Status\n- Initialized\n"
-                    )
+                    await f.write(f"# {filename}\n\n{description}\n\n## Status\n- Initialized\n")
         except ValueError as e:
             log_error(f"Initialization skipped for invalid filename: {filename}", e)
 
 
-async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, precomputed_vectors: list[list[float]] | None = None):
+async def save_bank_files(
+    bank_files: dict[str, str],
+    agent_id: str,
+    conn,
+    precomputed_vectors: list[list[float]] | None = None,
+):
     """
     Saves bank files to disk and DB.
     Optimized to wrap file operations in a single lock session.
@@ -51,7 +58,8 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
     cursor = await conn.execute("SELECT name FROM entities")
     existing_entities = [r[0] for r in await cursor.fetchall()]
     bank_dir = get_bank_dir()
-    
+    os.makedirs(bank_dir, exist_ok=True)
+
     items_to_process = []
     for filename, content in bank_files.items():
         try:
@@ -64,7 +72,7 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
                     "sanitized_filename": sanitized_filename,
                     "path": path,
                     "content": masked_content,
-                    "embedding_text": f"File: {sanitized_filename}\nContent: {masked_content}",
+                    "embedding_text": (f"File: {sanitized_filename}\nContent: {masked_content}"),
                 }
             )
         except ValueError as e:
@@ -97,11 +105,13 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
             old_data = json.dumps({"content": old_content_row[0]}) if old_content_row else None
 
             await conn.execute(
-                "INSERT OR REPLACE INTO bank_files (filename, content, updated_by) VALUES (?, ?, ?)",
+                "INSERT OR REPLACE INTO bank_files "
+                "(filename, content, updated_by) VALUES (?, ?, ?)",
                 (filename, content, agent_id),
             )
             await conn.execute(
-                "INSERT INTO audit_logs (table_name, content_id, action, old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO audit_logs (table_name, content_id, action, "
+                "old_data, new_data, agent_id) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     "bank_files",
                     filename,
@@ -115,8 +125,9 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
             # 2. Vector Sync
             if vector:
                 await conn.execute(
-                    "INSERT OR REPLACE INTO embeddings (content_id, vector, model_name) VALUES (?, ?, ?)",
-                    (filename, json.dumps(vector).encode("utf-8"), EMBEDDING_MODEL),
+                    "INSERT OR REPLACE INTO embeddings "
+                    "(content_id, vector, model_name) VALUES (?, ?, ?)",
+                    (filename, json.dumps(vector).encode("utf-8"), settings.embedding_model),
                 )
 
             # 3. Disk Sync
@@ -127,7 +138,9 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
             for entity_name in existing_entities:
                 if entity_name.lower() in content.lower():
                     await conn.execute(
-                        "INSERT OR REPLACE INTO relations (source, target, relation_type, created_by) VALUES (?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO relations "
+                        "(subject, object, predicate, created_by) "
+                        "VALUES (?, ?, ?, ?)",
                         (filename, entity_name, "mentions", agent_id),
                     )
 
@@ -136,14 +149,22 @@ async def save_bank_files(bank_files: dict[str, str], agent_id: str, conn, preco
 
 async def read_bank_data(query: str | None = None):
     # Lock for disk read to ensure atomicity
+    logger.info(f"read_bank_data START query={query}")
     async with GlobalLock(BANK_LOCK_NAME):
+        logger.debug(f"GlobalLock ACQUIRED query={query}")
         bank_dir = get_bank_dir()
         bank_data = {}
         found_files = set()
 
+        # Step 1: Get list of ACTIVE files from DB
+        active_files = []
+        async with await async_get_connection() as conn:
+            cursor = await conn.execute("SELECT filename FROM bank_files WHERE status = 'active'")
+            active_files = [r[0] for r in await cursor.fetchall()]
+
         if os.path.exists(bank_dir):
             for filename in os.listdir(bank_dir):
-                if filename.endswith(".md"):
+                if filename.endswith(".md") and filename in active_files:
                     try:
                         path = safe_path_join(bank_dir, filename)
                         async with aiofiles.open(path, encoding="utf-8") as f:
@@ -156,15 +177,18 @@ async def read_bank_data(query: str | None = None):
                     except (Exception, ValueError) as e:
                         log_error(f"Failed to read bank file {filename}", e)
 
-        # Merge with recovering data from DB
+        # Step 2: Merge with recovering data from DB (only active ones)
         async with await async_get_connection() as conn:
-            cursor = await conn.execute("SELECT filename, content FROM bank_files")
+            cursor = await conn.execute(
+                "SELECT filename, content FROM bank_files WHERE status = 'active'"
+            )
             db_files = await cursor.fetchall()
             for filename, content in db_files:
                 if filename not in found_files:
                     if not query or query.lower() in content.lower():
                         # Mark as recovered to avoid confusion
                         bank_data[f"{filename} [RECOVERED]"] = content
+        logger.info(f"read_bank_data COMPLETE query={query}")
         return bank_data
 
 

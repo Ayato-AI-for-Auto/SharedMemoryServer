@@ -1,98 +1,155 @@
+import json
 import os
 import shutil
 import tempfile
-from unittest.mock import MagicMock, patch
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
-@pytest.fixture
-def temp_db():
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    yield path
-    if os.path.exists(path):
-        try:
-            os.remove(path)
-        except:
-            pass
-    for ext in ["-wal", "-shm"]:
-        if os.path.exists(path + ext):
-            try:
-                os.remove(path + ext)
-            except:
-                pass
-
-
-@pytest.fixture
-def temp_bank():
-    dir_path = tempfile.mkdtemp()
-    yield dir_path
-    shutil.rmtree(dir_path)
-
-
-@pytest.fixture
-def temp_home():
-    dir_path = tempfile.mkdtemp()
-    yield dir_path
-    shutil.rmtree(dir_path)
-
-
 @pytest.fixture(autouse=True)
-def mock_env(temp_db, temp_bank, temp_home):
-    """Mocks environment variables for testing with strict isolation."""
-    env_vars = {
-        "MEMORY_DB_PATH": temp_db,
-        "MEMORY_BANK_DIR": temp_bank,
-        "THOUGHTS_DB_PATH": temp_db.replace(".db", "_thoughts.db"),
-        "SHARED_MEMORY_HOME": temp_home,
-    }
-    if "GOOGLE_API_KEY" not in os.environ:
-        env_vars["GOOGLE_API_KEY"] = "mock_key"
-
-    with patch.dict(os.environ, env_vars):
-        yield
-
-
-@pytest.fixture(autouse=True)
-async def setup_teardown_db():
-    from shared_memory.database import init_db
+async def setup_teardown_db(request):
+    from shared_memory.database import close_all_connections, init_db
     from shared_memory.thought_logic import init_thoughts_db
-    await init_db()
-    await init_thoughts_db()
+
+    # Standard path resolution for testing - Use a more specific prefix
+    home_dir = tempfile.mkdtemp(prefix="sm_test_")
+    os.environ["SHARED_MEMORY_HOME"] = home_dir
+    os.environ["MEMORY_DB_PATH"] = os.path.join(home_dir, "knowledge.db")
+    os.environ["THOUGHTS_DB_PATH"] = os.path.join(home_dir, "thoughts.db")
+    os.environ["MEMORY_BANK_DIR"] = os.path.join(home_dir, "bank")
+
+    # Initialize databases for each test
+    await init_db(force=True)
+    await init_thoughts_db(force=True)
+
+    # Reset server initialization state
+    from shared_memory import server
+
+    server._INITIALIZED_EVENT.clear()
+    server._INIT_ERROR = None
+
     yield
 
+    # Teardown: Close singleton connections before rmtree (Windows requirement)
+    # We must ensure all connections are closed and references cleared
+    try:
+        await close_all_connections()
+    except Exception as e:
+        print(f"DEBUG: Teardown close_all_connections failed: {e}")
 
-@pytest.fixture(autouse=True)
-def mock_gemini():
-    patches = [
-        patch("shared_memory.embeddings.get_gemini_client"),
-        patch("shared_memory.search.get_gemini_client"),
-        patch("shared_memory.management.get_gemini_client"),
-        patch("shared_memory.distiller.get_gemini_client"),
-        patch("shared_memory.graph.get_gemini_client"),
-    ]
-    mock_client = MagicMock()
-    mock_embedding_result = MagicMock()
-    mock_embedding_result.embeddings = [MagicMock(values=[0.1] * 768)]
-    mock_client.models.embed_content.return_value = mock_embedding_result
-    mock_client.models.generate_content.return_value = MagicMock(
-        text='{"conflict": true, "reason": "Conflict detected.", "synthesis": "Synthesis result."}'
-    )
-    mock_client.models.list.return_value = [type("Model", (), {"name": "models/gemini-pro"})]
-    handlers = []
-    for p in patches:
-        h = p.start()
-        h.return_value = mock_client
-        handlers.append(p)
-    yield mock_client
-    for p in handlers:
-        p.stop()
+    if os.path.exists(home_dir):
+        # Retry logic for Windows rmtree
+        import time
+
+        for _ in range(10):
+            try:
+                shutil.rmtree(home_dir, ignore_errors=False)
+                break
+            except OSError:
+                time.sleep(0.2)
 
 
 @pytest.fixture
-async def async_db(temp_db):
-    from shared_memory.database import async_get_connection, init_db
-    await init_db()
-    async with await async_get_connection() as conn:
-        yield conn
+def fake_llm():
+    """Deterministic LLM stub for Unit Tests (No MagicMock)."""
+    from tests.unit.fake_client import FakeGeminiClient
+
+    client = FakeGeminiClient()
+
+    patches = [
+        patch("shared_memory.embeddings.get_gemini_client", return_value=client),
+        patch("shared_memory.distiller.get_gemini_client", return_value=client),
+        patch("shared_memory.graph.get_gemini_client", return_value=client),
+        patch("shared_memory.salvage.get_gemini_client", return_value=client),
+        patch("shared_memory.search.get_gemini_client", return_value=client),
+    ]
+
+    for p in patches:
+        p.start()
+
+    try:
+        yield client
+    finally:
+        for p in patches:
+            p.stop()
+
+
+@pytest.fixture
+def mock_llm(request):
+    """
+    Universal LLM mock (MagicMock) for Integration/System tests.
+    Disabled automatically if 'unit' marker is used.
+    """
+    if "unit" in request.node.keywords:
+        pytest.fail("MagicMock is prohibited in unit tests. Use 'fake_llm' fixture instead.")
+        yield None
+        return
+
+    client = MagicMock()
+    # ... (rest of the MagicMock setup)
+    client.models.generate_content.return_value.text = json.dumps(
+        {"conflict": False, "reason": "No conflict detected in mock."}
+    )
+
+    def set_response(method, text):
+        if method == "generate_content":
+            client.models.generate_content.return_value.text = text
+            client.aio.models.generate_content.return_value.text = text
+
+    client.models.set_response = set_response
+
+    client.aio.models.generate_content = AsyncMock()
+    client.aio.models.generate_content.return_value.text = json.dumps(
+        {"conflict": False, "reason": "No conflict detected in mock."}
+    )
+
+    client.aio.models.embed_content = AsyncMock()
+    mock_embedding = MagicMock()
+    mock_embedding.values = [0.1] * 768
+    client.aio.models.embed_content.return_value.embeddings = [mock_embedding] * 100
+
+    client.aio.models.list = AsyncMock()
+    model_obj = MagicMock()
+    model_obj.name = "models/gemini-2.0-flash-exp"
+    client.aio.models.list.return_value = [model_obj]
+
+    patches = [
+        patch("shared_memory.embeddings.get_gemini_client", return_value=client),
+        patch("shared_memory.distiller.get_gemini_client", return_value=client),
+        patch("shared_memory.graph.get_gemini_client", return_value=client),
+        patch("shared_memory.salvage.get_gemini_client", return_value=client),
+        patch("shared_memory.search.get_gemini_client", return_value=client),
+    ]
+
+    for p in patches:
+        p.start()
+
+    try:
+        yield client
+    finally:
+        for p in patches:
+            p.stop()
+
+
+@pytest.fixture(autouse=True)
+def auto_mock_llm(request):
+    """
+    Automatically provide mock_llm to non-unit tests.
+    Unit tests must explicitly use 'fake_llm'.
+    """
+    if "unit" in request.node.keywords:
+        return None
+    return request.getfixturevalue("mock_llm")
+
+
+@contextmanager
+def temp_env(env_vars):
+    old_env = os.environ.copy()
+    os.environ.update(env_vars)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(old_env)

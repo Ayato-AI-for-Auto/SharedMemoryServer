@@ -11,6 +11,7 @@ mcp = FastMCP("SharedMemoryAdminServer")
 # LIFESPAN & INITIALIZATION
 # ==========================================
 
+
 @mcp.lifespan()
 async def lifespan(mcp_instance: FastMCP):
     """
@@ -19,7 +20,7 @@ async def lifespan(mcp_instance: FastMCP):
     """
     await init_db()
     await thought_logic.init_thoughts_db()
-    
+
     yield
 
 
@@ -62,6 +63,24 @@ async def admin_create_snapshot(name: str, description: str = ""):
 async def admin_restore_snapshot(snapshot_id: int):
     """Restores the database to a previously created snapshot."""
     return await logic.restore_snapshot_core(snapshot_id)
+
+
+@mcp.tool()
+async def admin_get_value_report(format_type: str = "markdown"):
+    """
+    Returns an objective value report (Fact-Based) of the memory server.
+    :param format_type: 'markdown' (default) for report, 'json' for data.
+    """
+    return await logic.get_value_report_core(format_type)
+
+
+@mcp.tool()
+async def admin_run_knowledge_gc(age_days: int = 180, dry_run: bool = False):
+    """
+    Manually triggers the Knowledge Garbage Collection (GC) logic.
+    Moves 'active' items that are stale (low importance and old) to 'inactive'.
+    """
+    return await logic.admin_run_knowledge_gc_core(age_days, dry_run)
 
 
 def main():

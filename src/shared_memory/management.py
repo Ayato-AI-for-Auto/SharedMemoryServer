@@ -94,12 +94,15 @@ async def rollback_memory_logic(audit_id: int):
 
             if table == "entities":
                 await conn.execute(
-                    "INSERT OR REPLACE INTO entities (name, entity_type, description) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO entities "
+                    "(name, entity_type, description) VALUES (?, ?, ?)",
                     (data["name"], data["type"], data["desc"]),
                 )
             elif table == "bank_files":
                 await conn.execute(
-                    "INSERT OR REPLACE INTO bank_files (filename, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                    "INSERT OR REPLACE INTO bank_files "
+                    "(filename, content, updated_at) "
+                    "VALUES (?, ?, CURRENT_TIMESTAMP)",
                     (cid, data["content"]),
                 )
 
@@ -114,11 +117,21 @@ async def get_memory_health_logic():
     async with await async_get_connection() as conn:
         health = {}
         try:
-            health["entities_count"] = (await (await conn.execute("SELECT COUNT(*) FROM entities")).fetchone())[0]
-            health["relations_count"] = (await (await conn.execute("SELECT COUNT(*) FROM relations")).fetchone())[0]
-            health["observations_count"] = (await (await conn.execute("SELECT COUNT(*) FROM observations")).fetchone())[0]
-            health["bank_files_cached"] = (await (await conn.execute("SELECT COUNT(*) FROM bank_files")).fetchone())[0]
-            health["embeddings_count"] = (await (await conn.execute("SELECT COUNT(*) FROM embeddings")).fetchone())[0]
+            health["entities_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM entities")).fetchone()
+            )[0]
+            health["relations_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM relations")).fetchone()
+            )[0]
+            health["observations_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM observations")).fetchone()
+            )[0]
+            health["bank_files_cached"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM bank_files")).fetchone()
+            )[0]
+            health["embeddings_count"] = (
+                await (await conn.execute("SELECT COUNT(*) FROM embeddings")).fetchone()
+            )[0]
 
             cursor = await conn.execute(
                 "SELECT content_id, access_count, last_accessed FROM knowledge_metadata"
@@ -142,18 +155,16 @@ async def get_memory_health_logic():
 
             # Check for missing embeddings
             health["missing_embeddings"] = (
-                health["entities_count"]
-                + health["bank_files_cached"]
-                - health["embeddings_count"]
+                health["entities_count"] + health["bank_files_cached"] - health["embeddings_count"]
             )
 
             health["semantic_search_active"] = get_gemini_client() is not None
 
             # Gaps & Bias
             cursor = await conn.execute("""
-                SELECT name FROM entities 
-                WHERE name NOT IN (SELECT source FROM relations) 
-                AND name NOT IN (SELECT target FROM relations)
+                SELECT name FROM entities
+                WHERE name NOT IN (SELECT subject FROM relations)
+                AND name NOT IN (SELECT object FROM relations)
             """)
             isolated = await cursor.fetchall()
             health["gaps_analysis"] = {
@@ -162,7 +173,8 @@ async def get_memory_health_logic():
             }
 
             if health["entities_count"] > 1:
-                max_relations = health["entities_count"] * (health["entities_count"] - 1)
+                count = health["entities_count"]
+                max_relations = count * (count - 1)
                 health["gaps_analysis"]["graph_density"] = round(
                     health["relations_count"] / max_relations, 4
                 )
@@ -179,14 +191,14 @@ async def get_memory_health_logic():
                 "SELECT created_by, COUNT(*) FROM entities GROUP BY created_by"
             )
             agent_stats = await cursor.fetchall()
-            health["agent_contribution"] = {
-                a[0] if a[0] else "legacy": a[1] for a in agent_stats
-            }
+            health["agent_contribution"] = {a[0] if a[0] else "legacy": a[1] for a in agent_stats}
 
         except Exception as e:
             log_error("Health diagnostics failed", e)
             health["error"] = str(e)
         return health
+
+
 async def list_snapshots_logic():
     async with await async_get_connection() as conn:
         cursor = await conn.execute(

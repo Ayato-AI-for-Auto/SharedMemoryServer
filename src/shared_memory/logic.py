@@ -1,117 +1,287 @@
-import json
 import asyncio
-import aiosqlite
+import json
+import time
 from typing import Any
 
-from shared_memory import bank, graph, health, management, search
-from shared_memory.database import async_get_connection, retry_on_db_lock
+import aiosqlite
+
+from shared_memory import bank, graph, health, lifecycle, management, search
+from shared_memory.database import (
+    async_get_connection,
+    get_write_semaphore,
+    init_db,
+    retry_on_db_lock,
+)
 from shared_memory.embeddings import compute_embeddings_bulk
-from shared_memory.exceptions import DatabaseError, SharedMemoryError
-from shared_memory.utils import log_error
+from shared_memory.insights import InsightEngine
+from shared_memory.utils import get_logger, log_error
+
+logger = get_logger("logic")
+
+
+def normalize_bank_files(bank_files: Any) -> dict[str, str]:
+    """
+    Standardizes bank_files input into a dict[str, str].
+    Handles:
+    - Already a dict: { "file.md": "content" }
+    - List of dicts with various naming:
+        [{"filename": "a.md", "content": "..."}, {"name": "b.md", "text": "..."}]
+    - List of simple dicts: [{"a.md": "content"}]
+    """
+    if not bank_files:
+        return {}
+
+    result = {}
+
+    # 1. Handle Single Dictionary Case
+    if isinstance(bank_files, dict):
+        # Could be { "file.md": "content" } OR { "filename": "a.md", "content": "..." }
+        if "content" in bank_files or "text" in bank_files:
+            # It's a single file object passed as a dict
+            content = bank_files.get("content") or bank_files.get("text")
+            filename = (
+                bank_files.get("filename") or bank_files.get("name") or "derived_knowledge.md"
+            )
+            if content:
+                result[str(filename)] = str(content)
+            return result
+        # Standard format: { "file.md": "content" }
+        return {str(k): str(v) for k, v in bank_files.items() if v}
+
+    # 2. Handle List Case
+    if isinstance(bank_files, list):
+        for i, item in enumerate(bank_files):
+            if not isinstance(item, dict):
+                continue
+
+            # Pattern A: Standard explicit keys
+            # (Checks multiple synonyms for filename and content)
+            filename = item.get("filename") or item.get("name") or item.get("title")
+            content = item.get("content") or item.get("text") or item.get("body")
+
+            if content:
+                if not filename:
+                    filename = f"derived_knowledge_{i}.md"
+                result[str(filename)] = str(content)
+                continue
+
+            # Pattern B: Item is a single { "filename.md": "content" } entry
+            # But only if it's not a structured dict that happens to have 1 key
+            if len(item) == 1:
+                key, val = next(iter(item.items()))
+                # Ignore if the single key is a known attribute name but has no value
+                if key in ["filename", "name", "title", "content", "text", "body"]:
+                    continue
+                if isinstance(val, str):
+                    result[str(key)] = val
+                    continue
+
+        return result
+
+    return {}
 
 
 @retry_on_db_lock()
 async def save_memory_core(
-    entities: list[dict[str, Any]] | None = None,
+    entities: list[dict[str, Any] | str] | None = None,
     relations: list[dict[str, Any]] | None = None,
-    observations: list[dict[str, Any]] | None = None,
-    bank_files: dict[str, str] | None = None,
+    observations: list[dict[str, Any] | str] | None = None,
+    bank_files: dict[str, str] | list[dict[str, str]] | Any | None = None,
     agent_id: str = "default_agent",
 ) -> str:
     """
     Orchestrates memory saving using 'Compute-then-Write' pattern.
     Performs all slow AI operations outside the DB transaction.
     """
-    entities = entities or []
+    logger.info("save_memory_core START")
+    try:
+        await init_db()
+    except Exception as e:
+        msg = f"Critical Error: Could not initialize database. {e}"
+        logger.error(msg, exc_info=True)
+        log_error(msg)
+        return msg
+
+    # --- Normalization (Handle string shorthands) ---
+    entities = [
+        {"name": e, "entity_type": "concept", "description": ""} if isinstance(e, str) else e
+        for e in (entities or [])
+    ]
+    observations = [
+        {"content": obs, "entity_name": "Global"} if isinstance(obs, str) else obs
+        for obs in (observations or [])
+    ]
     relations = relations or []
-    observations = observations or []
-    bank_files = bank_files or {}
+    bank_files = normalize_bank_files(bank_files)
 
     # --- Phase 1: Pre-compute AI results ---
+    start_time = time.perf_counter()
+    logger.info(
+        f"Phase 1 (AI) START: {len(entities)} entities, {len(relations)} relations, "
+        f"{len(observations)} observations, {len(bank_files)} bank files"
+    )
+    ai_start_time = time.perf_counter()
 
     # 1.1 Prepare Embedding Inputs
-    entity_texts = [f"{e.get('name', '')} ({e.get('entity_type', 'concept')}): {e.get('description', '')}" for e in entities if e.get('name')]
+    entity_texts = []
+    for e in entities:
+        if not e.get("name"):
+            continue
+        name = e.get("name")
+        e_type = e.get("entity_type", "concept")
+        desc = e.get("description", "")
+        entity_texts.append(f"{name} ({e_type}): {desc}")
+
     bank_file_items = []
     for filename, content in bank_files.items():
-        bank_file_items.append({"filename": filename, "text": f"File: {filename}\nContent: {content}"})
-    
+        bank_file_items.append(
+            {"filename": filename, "text": f"File: {filename}\nContent: {content}"}
+        )
+
     bank_texts = [item["text"] for item in bank_file_items]
     all_embedding_texts = entity_texts + bank_texts
+    logger.info(f"Prepared {len(all_embedding_texts)} embedding inputs")
 
     # 1.2 Prepare Tasks (Embeddings and Conflict Checks)
     tasks = []
     if all_embedding_texts:
+        logger.debug("Adding compute_embeddings_bulk task")
         tasks.append(compute_embeddings_bulk(all_embedding_texts))
     else:
-        tasks.append(asyncio.sleep(0, result=[])) # Dummy task
+        tasks.append(asyncio.sleep(0, result=[]))  # Dummy task
 
-    for obs in observations:
-        tasks.append(graph.check_conflict(obs.get("entity_name", ""), obs.get("content", ""), agent_id))
+    # 1.3 Execute Parallel AI Calls (Embeddings only for now)
+    logger.info("Phase 1.1 (Embeddings) GATHERING")
+    try:
+        # We only run embeddings in parallel here.
+        # Conflict checks are moved inside the semaphore to prevent race conditions.
+        all_vectors = await (tasks[0] if tasks else asyncio.sleep(0, result=[]))
+    except Exception as e:
+        msg = f"AI Error: Embedding computation failed. {e}"
+        logger.error(f"Phase 1.1 FAILED: {msg}", exc_info=True)
+        log_error(msg)
+        return msg
 
-    # 1.3 Execute Parallel AI Calls
-    ai_results = await asyncio.gather(*tasks)
-    
-    all_vectors = ai_results[0]
-    raw_conflict_results = ai_results[1:]
+    ai_duration = time.perf_counter() - ai_start_time
+    logger.info(f"Phase 1.1 COMPLETE. Duration: {ai_duration:.2f}s")
 
-    # 1.4 Distribute Results
-    precomputed_entity_vectors = all_vectors[:len(entity_texts)]
-    precomputed_bank_vectors = all_vectors[len(entity_texts):]
-    
-    precomputed_observations_conflicts = []
-    for i, res in enumerate(raw_conflict_results):
-        is_conflict, reason = res
-        precomputed_observations_conflicts.append({
-            "index": i,
-            "is_conflict": is_conflict,
-            "reason": reason
-        })
+    # Distribute Vectors
+    precomputed_entity_vectors = all_vectors[: len(entity_texts)]
+    precomputed_bank_vectors = all_vectors[len(entity_texts) :]
 
-    # --- Phase 2: Rapid DB Write ---
+    # --- Phase 2: Sequential Write (Conflict Checks + DB Write) ---
+    logger.info("Phase 2 (Protected) START")
+    db_start_time = time.perf_counter()
+    try:
+        async with get_write_semaphore():
+            # 2.1 Conflict Checks (Inside semaphore to avoid races)
+            logger.info(f"Phase 2.1 (Conflict Checks) START for {len(observations)} observations")
+            precomputed_observations_conflicts = []
+            for i, obs in enumerate(observations):
+                is_conflict, reason = await graph.check_conflict(
+                    obs.get("entity_name", ""), obs.get("content", ""), agent_id
+                )
+                precomputed_observations_conflicts.append(
+                    {"index": i, "is_conflict": is_conflict, "reason": reason}
+                )
 
-    async with await async_get_connection() as conn:
-        results = []
-        try:
-            if entities:
-                results.append(await graph.save_entities(entities, agent_id, conn, precomputed_vectors=precomputed_entity_vectors))
-            if relations:
-                results.append(await graph.save_relations(relations, agent_id, conn))
-            if observations:
-                res, conflicts = await graph.save_observations(observations, agent_id, conn, precomputed_conflicts=precomputed_observations_conflicts)
-                results.append(res)
-                if conflicts:
-                    results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
-            if bank_files:
-                results.append(await bank.save_bank_files(bank_files, agent_id, conn, precomputed_vectors=precomputed_bank_vectors))
+            # 2.2 Rapid DB Write
+            async with await async_get_connection() as conn:
+                logger.info("DB Connection ACQUIRED")
+                results = []
+                try:
+                    if entities:
+                        logger.debug(f"Saving {len(entities)} entities")
+                        results.append(
+                            await graph.save_entities(
+                                entities,
+                                agent_id,
+                                conn,
+                                precomputed_vectors=precomputed_entity_vectors,
+                            )
+                        )
+                    if relations:
+                        logger.debug(f"Saving {len(relations)} relations")
+                        results.append(await graph.save_relations(relations, agent_id, conn))
+                    if observations:
+                        logger.debug(f"Saving {len(observations)} observations")
+                        res, conflicts = await graph.save_observations(
+                            observations,
+                            agent_id,
+                            conn,
+                            precomputed_conflicts=precomputed_observations_conflicts,
+                        )
+                        results.append(res)
+                        if conflicts:
+                            logger.warning(f"Conflicts detected: {len(conflicts)}")
+                            results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
+                    if bank_files:
+                        logger.debug(f"Saving {len(bank_files)} bank files")
+                        results.append(
+                            await bank.save_bank_files(
+                                bank_files,
+                                agent_id,
+                                conn,
+                                precomputed_vectors=precomputed_bank_vectors,
+                            )
+                        )
 
-            await conn.commit()
-        except aiosqlite.Error as e:
-            await conn.rollback()
-            log_error("Database transaction failed in save_memory_core", e)
-            raise DatabaseError(f"Transaction failed: {e}") from e
-        except Exception as e:
-            await conn.rollback()
-            log_error("Unexpected error in save_memory_core", e)
-            raise SharedMemoryError(f"Unexpected error: {e}") from e
+                    logger.info("Committing DB transaction")
+                    await conn.commit()
+                    logger.info("DB transaction COMMITTED")
+                except aiosqlite.Error as e:
+                    logger.error(f"DB Transaction Error: {e}", exc_info=True)
+                    await conn.rollback()
+                    log_error("Database transaction failed in save_memory_core", e)
+                    return f"Database Error: Transaction failed. {e}"
+                except Exception as e:
+                    logger.error(f"Unexpected error during DB phase: {e}", exc_info=True)
+                    await conn.rollback()
+                    log_error("Unexpected error in save_memory_core", e)
+                    return f"Internal Error: {e}"
+    except Exception as e:
+        msg = f"Critical Error: Failed to acquire DB connection. {e}"
+        logger.error(msg, exc_info=True)
+        return msg
 
-    return " | ".join(results)
+    db_duration = time.perf_counter() - db_start_time
+    total_duration = time.perf_counter() - start_time
+    result_summary = " | ".join(results)
+    logger.info(
+        f"save_memory_core SUCCESS. Results: {result_summary}. "
+        f"Total: {total_duration:.2f}s (AI: {ai_duration:.2f}s, DB: {db_duration:.2f}s)"
+    )
+    return result_summary
 
 
-@retry_on_db_lock()
-async def read_memory_core(query: str | None = None) -> dict[str, Any]:
+async def read_memory_core(query: str | None = None) -> dict[str, Any] | str:
     """
     Core logic for reading memory.
     """
+    logger.info(f"read_memory_core START query='{query}'")
+    start_time = time.perf_counter()
+    try:
+        await init_db()
+    except Exception as e:
+        return f"Database Error: Initialization failed. {e}"
+
     try:
         if query:
             graph_data, bank_data = await search.perform_search(query)
         else:
             graph_data = await graph.get_graph_data()
             bank_data = await bank.read_bank_data()
+
+        duration = time.perf_counter() - start_time
+        logger.info(f"read_memory_core COMPLETE query='{query}' duration={duration:.2f}s")
         return {"graph": graph_data, "bank": bank_data}
+    except aiosqlite.OperationalError as e:
+        if "locked" in str(e).lower():
+            return "Database Error: Database is currently locked by another process."
+        return f"Database Error: Query failed. {e}"
     except Exception as e:
         log_error("Error in read_memory_core", e)
-        raise SharedMemoryError(f"Read failed: {e}") from e
+        return f"Read Error: {e}"
 
 
 async def get_audit_history_core(limit: int = 20, table_name: str | None = None):
@@ -126,7 +296,7 @@ async def rollback_memory_core(audit_id: int):
     return await management.rollback_memory_logic(audit_id)
 
 
-async def create_snapshot_core(name: str, description: str):
+async def create_snapshot_core(name: str, description: str = ""):
     return await management.create_snapshot_logic(name, description)
 
 
@@ -143,3 +313,27 @@ async def get_memory_health_core():
 
 async def repair_memory_core():
     return await bank.repair_memory_logic()
+
+
+async def get_value_report_core(format_type: str = "markdown"):
+    """
+    Returns an objective value report of the memory server.
+    :param format_type: 'markdown' for human reading, 'json' for UI/API integration.
+    """
+    if format_type == "json":
+        return await InsightEngine.get_summary_metrics()
+
+    metrics_data = await InsightEngine.get_summary_metrics()
+    return InsightEngine.generate_report_markdown(metrics_data)
+
+
+async def manage_knowledge_activation_core(ids: list[str], status: str):
+    return await lifecycle.manage_knowledge_activation_logic(ids, status)
+
+
+async def list_inactive_knowledge_core():
+    return await lifecycle.list_inactive_knowledge_logic()
+
+
+async def admin_run_knowledge_gc_core(age_days: int = 180, dry_run: bool = False):
+    return await lifecycle.run_knowledge_gc_logic(age_days, dry_run)

@@ -1,0 +1,113 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  lint_and_test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - name: Install dependencies
+        run: |
+          if [ ! -d ".venv" ]; then uv venv; fi
+          ls -la
+          uv pip install -e "./[test]"
+          uv pip install ruff pytest-timeout
+      - name: Lint
+        run: |
+          uv run ruff check .
+      - name: Run Tests
+        run: |
+          # Only run curated tests (unit/integration/system) to ensure stability and isolate resource leaks
+          # Use pytest-timeout to catch individual test hangs without blocking the whole job
+          uv run pytest tests/unit/ tests/integration/ tests/system/ -v --durations=10 --timeout=120
+
+  release:
+    name: Semantic Release
+    needs: lint_and_test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - name: Install semantic-release
+        run: |
+          if [ ! -d ".venv" ]; then uv venv; fi
+          ls -la
+          uv pip install python-semantic-release
+      - name: Python Semantic Release
+        id: semantic
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run semantic-release version
+          uv run semantic-release publish
+
+  build_assets:
+    name: Build Windows Assets
+    needs: release
+    # Only run when a new release is actually published
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.release.outputs.new_release_published == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ ! -d ".venv" ]; then uv venv; fi
+          ls -la
+          uv pip install -e .
+          uv pip install pyinstaller
+      - name: Build with PyInstaller
+        run: |
+          uv run pyinstaller --onefile --name SharedMemoryServer --clean src/shared_memory/server.py
+          uv run pyinstaller --onefile --name SharedMemoryRegister --clean src/shared_memory/register.py
+      - name: Upload Binaries to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/SharedMemoryServer.exe
+            dist/SharedMemoryRegister.exe
+          # If a tag was just created, it will be used. 
+          # If not, it will try to use the current commit's tag if any.
+          fail_on_unmatched_files: false
+          append_body: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

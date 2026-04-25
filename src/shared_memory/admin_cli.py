@@ -9,13 +9,13 @@ async def run_history(args):
     if not history:
         print("No audit history found.")
         return
-    print(
-        f"{'ID':<5} | {'Timestamp':<20} | {'Action':<10} | {'Table':<15} | {'Agent':<15}"
-    )
+    print(f"{'ID':<5} | {'Timestamp':<20} | {'Action':<10} | {'Table':<15} | {'Agent':<15}")
     print("-" * 75)
     for entry in history:
         print(
-            f"{entry['id']:<5} | {entry['timestamp']:<20} | {entry['action']:<10} | {entry['table']:<15} | {entry['agent']:<15}"
+            f"{entry['id']:<5} | {entry['timestamp']:<20} | "
+            f"{entry['action']:<10} | {entry['table']:<15} | "
+            f"{entry['agent']:<15}"
         )
 
 
@@ -72,17 +72,13 @@ def main():
 
     # History
     hist_parser = subparsers.add_parser("history", help="View audit history")
-    hist_parser.add_argument(
-        "--limit", type=int, default=20, help="Number of entries to show"
-    )
+    hist_parser.add_argument("--limit", type=int, default=20, help="Number of entries to show")
 
     # Repair
     subparsers.add_parser("repair", help="Repair memory bank files from DB")
 
     # Rollback
-    rb_parser = subparsers.add_parser(
-        "rollback", help="Rollback to a specific audit ID"
-    )
+    rb_parser = subparsers.add_parser("rollback", help="Rollback to a specific audit ID")
     rb_parser.add_argument("id", type=int, help="Audit ID to rollback to")
 
     # Snapshot
