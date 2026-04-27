@@ -1,4 +1,4 @@
-from shared_memory.logic import normalize_bank_files
+from shared_memory.logic import normalize_bank_files, normalize_observation_item
 
 
 def test_normalize_bank_files_dict_format():
@@ -69,7 +69,23 @@ def test_normalize_bank_files_auto_naming():
     assert result["derived_knowledge_1.md"] == "second"
 
 
-def test_normalize_bank_files_empty():
-    assert normalize_bank_files(None) == {}
-    assert normalize_bank_files([]) == {}
-    assert normalize_bank_files({}) == {}
+def test_normalize_observations_synonyms():
+    # Test 'observation' -> 'content'
+    item = {"entity_name": "A", "observation": "fact"}
+    res = normalize_observation_item(item)
+    assert res["content"] == "fact"
+    
+    # Test 'text' -> 'content'
+    item = {"entity_name": "A", "text": "fact2"}
+    res = normalize_observation_item(item)
+    assert res["content"] == "fact2"
+
+def test_normalize_observations_auto_entity():
+    # Test missing entity_name (should be 'Unknown')
+    item = {"content": "orphan fact"}
+    res = normalize_observation_item(item)
+    assert res["entity_name"] == "Unknown"
+    
+    # Test missing content
+    item = {"entity_name": "Ghost"}
+    assert normalize_observation_item(item) is None

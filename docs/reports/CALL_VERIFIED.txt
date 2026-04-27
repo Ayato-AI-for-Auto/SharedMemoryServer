@@ -1,4 +1,0 @@
-Function started for rev_session
-Function started for security_session
-Function started for perf_session
-Function started for coexist_session

@@ -110,9 +110,13 @@ def mock_llm(request):
     mock_embedding.values = [0.1] * 768
     client.aio.models.embed_content.return_value.embeddings = [mock_embedding] * 100
 
-    client.aio.models.list = AsyncMock()
     model_obj = MagicMock()
     model_obj.name = "models/gemini-2.0-flash-exp"
+
+    client.models.list = MagicMock()
+    client.models.list.return_value = [model_obj]
+
+    client.aio.models.list = AsyncMock()
     client.aio.models.list.return_value = [model_obj]
 
     patches = [

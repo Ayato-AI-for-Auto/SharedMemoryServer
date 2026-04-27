@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 import aiosqlite
 
@@ -19,7 +19,48 @@ from shared_memory.utils import get_logger, log_error
 logger = get_logger("logic")
 
 
-def normalize_bank_files(bank_files: Any) -> dict[str, str]:
+def normalize_entities(entities: Optional[List[Union[Dict[str, Any], str]]]) -> List[Dict[str, Any]]:
+    """Normalize entities from strings or various dict formats."""
+    normalized = []
+    for e in (entities or []):
+        if isinstance(e, str):
+            normalized.append({"name": e, "entity_type": "concept", "description": ""})
+        elif isinstance(e, dict):
+            # Ensure name exists and map common synonyms
+            e["name"] = e.get("name") or e.get("id") or e.get("title")
+            e["entity_type"] = e.get("entity_type") or e.get("type") or "concept"
+            e["description"] = e.get("description") or e.get("desc") or e.get("content") or ""
+            normalized.append(e)
+    return normalized
+
+
+def normalize_observation_item(obs: Union[Dict[str, Any], str]) -> Optional[Dict[str, Any]]:
+    """Normalize a single observation item."""
+    if isinstance(obs, str):
+        return {"content": obs, "entity_name": "Global"}
+    elif isinstance(obs, dict):
+        # Map synonyms (Crucial: 'observation' -> 'content')
+        content = obs.get("content") or obs.get("observation") or obs.get("text")
+        if not content:
+            return None
+        entity_name = obs.get("entity_name") or obs.get("entity") or "Unknown"
+        return {"content": content, "entity_name": entity_name}
+    return None
+
+
+def normalize_observations(
+    observations: Optional[List[Union[Dict[str, Any], str]]]
+) -> List[Dict[str, Any]]:
+    """Normalize a list of observations."""
+    normalized = []
+    for obs in (observations or []):
+        item = normalize_observation_item(obs)
+        if item:
+            normalized.append(item)
+    return normalized
+
+
+def normalize_bank_files(bank_files: Any) -> Dict[str, str]:
     """
     Standardizes bank_files input into a dict[str, str].
     Handles:
@@ -102,15 +143,9 @@ async def save_memory_core(
         log_error(msg)
         return msg
 
-    # --- Normalization (Handle string shorthands) ---
-    entities = [
-        {"name": e, "entity_type": "concept", "description": ""} if isinstance(e, str) else e
-        for e in (entities or [])
-    ]
-    observations = [
-        {"content": obs, "entity_name": "Global"} if isinstance(obs, str) else obs
-        for obs in (observations or [])
-    ]
+    # --- Normalization (Handle string shorthands and synonyms) ---
+    entities = normalize_entities(entities)
+    observations = normalize_observations(observations)
     relations = relations or []
     bank_files = normalize_bank_files(bank_files)
 
@@ -191,7 +226,7 @@ async def save_memory_core(
                 results = []
                 try:
                     if entities:
-                        logger.debug(f"Saving {len(entities)} entities")
+                        logger.info(f"Saving {len(entities)} entities...")
                         results.append(
                             await graph.save_entities(
                                 entities,
@@ -201,10 +236,10 @@ async def save_memory_core(
                             )
                         )
                     if relations:
-                        logger.debug(f"Saving {len(relations)} relations")
+                        logger.info(f"Saving {len(relations)} relations...")
                         results.append(await graph.save_relations(relations, agent_id, conn))
                     if observations:
-                        logger.debug(f"Saving {len(observations)} observations")
+                        logger.info(f"Saving {len(observations)} observations...")
                         res, conflicts = await graph.save_observations(
                             observations,
                             agent_id,
@@ -216,7 +251,7 @@ async def save_memory_core(
                             logger.warning(f"Conflicts detected: {len(conflicts)}")
                             results.append(f"CONFLICTS DETECTED: {json.dumps(conflicts)}")
                     if bank_files:
-                        logger.debug(f"Saving {len(bank_files)} bank files")
+                        logger.info(f"Saving {len(bank_files)} bank files...")
                         results.append(
                             await bank.save_bank_files(
                                 bank_files,
@@ -226,9 +261,9 @@ async def save_memory_core(
                             )
                         )
 
-                    logger.info("Committing DB transaction")
+                    logger.info("Committing database transaction...")
                     await conn.commit()
-                    logger.info("DB transaction COMMITTED")
+                    logger.info("Database transaction COMMITTED.")
                 except aiosqlite.Error as e:
                     logger.error(f"DB Transaction Error: {e}", exc_info=True)
                     await conn.rollback()
@@ -255,12 +290,11 @@ async def save_memory_core(
 
 
 async def read_memory_core(query: str | None = None) -> dict[str, Any] | str:
-    """
-    Core logic for reading memory.
-    """
-    logger.info(f"read_memory_core START query='{query}'")
+    """Retrieves knowledge from graph and bank."""
     start_time = time.perf_counter()
+    logger.info(f"read_memory_core START query='{query}'")
     try:
+        from shared_memory.database import init_db
         await init_db()
     except Exception as e:
         return f"Database Error: Initialization failed. {e}"

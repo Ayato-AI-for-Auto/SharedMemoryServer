@@ -14,11 +14,14 @@ from shared_memory.database import (
 from shared_memory.exceptions import DatabaseError
 from shared_memory.salvage import salvage_related_knowledge
 from shared_memory.utils import (
+    get_logger,
     get_thoughts_db_path,
     log_error,
     log_info,
     mask_sensitive_data,
 )
+
+logger = get_logger("thought_logic")
 
 # Throttling for background recovery
 LAST_RECOVERY_TIME = datetime.min
@@ -101,6 +104,10 @@ async def process_thought_core(
         await init_db()
         await init_thoughts_db()
 
+        logger.info(
+            f"Processing thought #{thought_number}/{total_thoughts} for session: {session_id}"
+        )
+
         # 1. Security: Mask sensitive data
         masked_thought = mask_sensitive_data(thought)
 
@@ -162,6 +169,7 @@ async def process_thought_core(
         # 6.1 Accretion: Asynchronously extract and save new knowledge from this thought
         from shared_memory.distiller import incremental_distill_knowledge
 
+        logger.info(f"Triggering incremental distillation for thought in session: {session_id}")
         asyncio.create_task(incremental_distill_knowledge(session_id, thought))
 
         # 6.2 Salvage: Synchronously retrieve and rerank related past knowledge
@@ -187,19 +195,18 @@ async def process_thought_core(
         if "PYTEST_CURRENT_TEST" not in os.environ:
             asyncio.create_task(trigger_opportunistic_recovery())
 
-            # 8. Final Distillation (Session Wrap-up)
-            if not next_thought_needed:
-                from shared_memory.distiller import auto_distill_knowledge
+        # 8. Final Distillation (Session Wrap-up)
+        if not next_thought_needed:
+            from shared_memory.distiller import auto_distill_knowledge
 
-                # Ensure the complete history is analyzed one last time for synthesis
-                history = await get_thought_history(session_id)
-                await auto_distill_knowledge(session_id, history)
-                async with await async_get_thoughts_connection() as conn:
-                    await conn.execute(
-                        "UPDATE thought_history SET distilled = 1 WHERE session_id = ?",
-                        (session_id,),
-                    )
-                    await conn.commit()
+            # Ensure the complete history is analyzed one last time for synthesis
+            await auto_distill_knowledge(session_id, history)
+            async with await async_get_thoughts_connection() as conn:
+                await conn.execute(
+                    "UPDATE thought_history SET distilled = 1 WHERE session_id = ?",
+                    (session_id,),
+                )
+                await conn.commit()
 
         return {
             "thoughtNumber": thought_number,
@@ -239,6 +246,7 @@ async def trigger_opportunistic_recovery():
     now = datetime.now()
     if now - LAST_RECOVERY_TIME > RECOVERY_COOLDOWN:
         LAST_RECOVERY_TIME = now
+        logger.info("Triggering opportunistic recovery of undistilled sessions...")
         await recover_undistilled_sessions()
 
 

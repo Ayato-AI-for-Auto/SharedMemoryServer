@@ -4,7 +4,12 @@ import math
 import os
 import re
 import sys
+import random
+import time
 from datetime import UTC, datetime
+from functools import wraps
+
+from loguru import logger as loguru_logger
 
 from shared_memory.exceptions import SecurityError
 
@@ -175,14 +180,17 @@ def sanitize_filename(name: str) -> str:
     Converts a string into a safe filename.
     Removes path traversal attempts and special characters.
     """
-    # 0. Strip directories
-    name = os.path.basename(name)
+    # 0. Strip directories and spaces
+    name = os.path.basename(name).strip()
 
     # 1. Strip ANY existing extension (e.g., .txt, .md) to enforce .md
     name, _ = os.path.splitext(name)
+    name = name.strip()
 
     # 2. Replace anything not alphanumeric or underscore/hyphen/dot
-    clean = re.sub(r"[^\w\-\.]", "_", name)
+    clean = re.sub(r"[^\w\-\.]", "_", name.lower())
+    # Collapse multiple underscores
+    clean = re.sub(r"_+", "_", clean)
 
     # 3. Prevent hidden files or path traversal
     clean = clean.lstrip(".")
@@ -195,12 +203,16 @@ def sanitize_filename(name: str) -> str:
 def mask_sensitive_data(text: str) -> str:
     """
     Masks sensitive information like API keys in logs or content.
-    Identifies patterns like 'AIza...' (Google API keys).
+    Identifies patterns like 'AIza...' (Google API keys) and 'sk-...' (Generic keys).
     """
     if not text:
         return ""
     # Mask Google API Key pattern
     text = re.sub(r"AIzaSy[a-zA-Z0-9\-_]{33}", "[GOOGLE_API_KEY_MASKED]", text)
+    # Mask Generic/OpenAI API Key pattern
+    text = re.sub(r"sk-[a-zA-Z0-9]{20,}", "[API_KEY_MASKED]", text)
+    # Mask Email addresses
+    text = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "[EMAIL_MASKED]", text)
     return text
 
 
@@ -249,37 +261,123 @@ def calculate_importance(access_count: int, last_accessed: str) -> float:
         return 0.0
 
 
+def parse_retry_delay(error: Exception) -> float | None:
+    """
+    Parses the retry delay from a Gemini API error.
+    Handles both string messages and structured error details.
+    """
+    error_str = str(error)
+
+    # 1. Try regex on the string message (e.g., "Please retry in 41.359s")
+    match = re.search(r"retry in ([\d.]+)s", error_str)
+    if match:
+        return float(match.group(1))
+
+    # 2. Try to extract from ClientError details if available (google-genai specific)
+    try:
+        # ClientError.message often contains the JSON-like representation
+        if hasattr(error, "message") and isinstance(error.message, dict):
+            details = error.message.get("error", {}).get("details", [])
+            for detail in details:
+                if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
+                    delay_str = detail.get("retryDelay", "0s")
+                    return float(delay_str.rstrip("s"))
+    except Exception:
+        pass
+
+    return None
+
+
+def retry_on_ai_quota(max_retries: int = 3, initial_backoff: float = 2.0):
+    """
+    Decorator for retrying AI API calls on 429 RESOURCE_EXHAUSTED errors.
+    Supports exponential backoff with jitter and respects retryDelay from API.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_error = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_error = e
+                    e_str = str(e).upper()
+                    if "429" in e_str or "RESOURCE_EXHAUSTED" in e_str:
+                        if attempt == max_retries:
+                            loguru_logger.error(
+                                f"AI Quota exhausted after {max_retries} retries: {e}"
+                            )
+                            raise
+
+                        # Determine wait time
+                        retry_delay = parse_retry_delay(e)
+                        if retry_delay:
+                            wait_time = retry_delay + random.uniform(0, 1.0)
+                        else:
+                            wait_time = (initial_backoff * (2**attempt)) + random.uniform(0, 1.0)
+
+                        loguru_logger.warning(
+                            f"AI Quota Exceeded (429). Attempt {attempt + 1}/{max_retries}. "
+                            f"Retrying in {wait_time:.2f}s..."
+                        )
+                        await asyncio.sleep(wait_time)
+                    else:
+                        # Not a quota error, re-raise immediately
+                        raise
+
+            raise last_error
+
+        return wrapper
+
+    return decorator
+
+
 class AIRateLimiter:
     """
     Centralized rate limiter for AI API calls (Gemini).
     Specifically designed to handle Free Tier '429 RESOURCE_EXHAUSTED' errors.
     """
 
-    _last_call_time: float = 0.0
-    _min_interval: float = 1.0  # 1 second between calls (min)
-    _locks: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+    _last_call_times: dict[str, float] = {}
+    _locks: dict[str, asyncio.Lock] = {}
+
+    # Default intervals (Free Tier: 10 RPM -> 6s, Embeddings: 1500 RPM -> ~0.04s but 1s is safer)
+    GENERATION_INTERVAL = 6.0
+    EMBEDDING_INTERVAL = 1.0
 
     @classmethod
-    async def throttle(cls):
+    async def throttle(cls, task_type: str = "generation"):
         """
-        Enforces a minimum time interval between AI calls.
-        Usage: await AIRateLimiter.throttle()
+        Enforces a minimum time interval between AI calls based on task type.
+        Usage: await AIRateLimiter.throttle("generation")
         """
-        loop = asyncio.get_running_loop()
-        if loop not in cls._locks:
-            cls._locks[loop] = asyncio.Lock()
+        interval = (
+            cls.GENERATION_INTERVAL if task_type == "generation" else cls.EMBEDDING_INTERVAL
+        )
 
-        async with cls._locks[loop]:
+        if task_type not in cls._locks:
+            cls._locks[task_type] = asyncio.Lock()
+
+        async with cls._locks[task_type]:
             now = asyncio.get_event_loop().time()
-            elapsed = now - cls._last_call_time
-            if elapsed < cls._min_interval:
-                wait_time = cls._min_interval - elapsed
-                get_logger("core").debug(f"AI Quota Throttling: Waiting {wait_time:.2f}s...")
+            last_time = cls._last_call_times.get(task_type, 0.0)
+            elapsed = now - last_time
+
+            if elapsed < interval:
+                wait_time = interval - elapsed
+                loguru_logger.debug(
+                    f"AI Quota Throttling ({task_type}): Waiting {wait_time:.2f}s..."
+                )
                 await asyncio.sleep(wait_time)
-                cls._last_call_time = asyncio.get_event_loop().time()
+                cls._last_call_times[task_type] = asyncio.get_event_loop().time()
             else:
-                cls._last_call_time = now
+                cls._last_call_times[task_type] = now
 
     @classmethod
-    def set_min_interval(cls, seconds: float):
-        cls._min_interval = seconds
+    def set_interval(cls, task_type: str, seconds: float):
+        if task_type == "generation":
+            cls.GENERATION_INTERVAL = seconds
+        else:
+            cls.EMBEDDING_INTERVAL = seconds

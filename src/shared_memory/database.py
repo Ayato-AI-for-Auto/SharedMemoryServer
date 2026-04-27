@@ -88,10 +88,12 @@ class AsyncSQLiteConnection:
             async with _INIT_LOCK:
                 if self.is_thoughts:
                     if _THOUGHTS_CONNECTION is None:
+                        logger.info(f"Establishing NEW thoughts singleton: {self.db_path}")
                         _THOUGHTS_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
                         _THOUGHTS_CONNECTION.row_factory = aiosqlite.Row
                         await _THOUGHTS_CONNECTION.execute("PRAGMA journal_mode = WAL")
                         await _THOUGHTS_CONNECTION.execute("PRAGMA synchronous = NORMAL")
+                        logger.info("Thoughts connection PRAGMAs configured (WAL/NORMAL).")
                     self.conn = _THOUGHTS_CONNECTION
                 else:
                     if _MAIN_CONNECTION is None:
@@ -114,8 +116,6 @@ class AsyncSQLiteConnection:
             raise DatabaseError(f"Database connection failed: {e}") from e
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # We DO NOT close the singleton connection here.
-        # It is closed by close_all_connections() at shutdown.
         pass
 
     def __await__(self):
@@ -131,13 +131,16 @@ async def close_all_connections():
     or between tests to ensure isolation.
     """
     global _MAIN_CONNECTION, _THOUGHTS_CONNECTION, _DB_INITIALIZED
+    logger.info("Closing all singleton database connections...")
     async with _INIT_LOCK:
         if _MAIN_CONNECTION:
             await _MAIN_CONNECTION.close()
             _MAIN_CONNECTION = None
+            logger.info("Main connection closed.")
         if _THOUGHTS_CONNECTION:
             await _THOUGHTS_CONNECTION.close()
             _THOUGHTS_CONNECTION = None
+            logger.info("Thoughts connection closed.")
         _DB_INITIALIZED = False
 
 

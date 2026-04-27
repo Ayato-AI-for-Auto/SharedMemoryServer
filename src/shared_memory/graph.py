@@ -113,8 +113,9 @@ async def save_entities(
 
     # 1. Prepare data
     items_to_process = []
+    logger.info(f"Saving {len(entities)} entities (agent={agent_id})...")
     for e in entities:
-        name = e.get("name", "").strip()
+        name = str(e.get("name") or "").strip()
         if not name:
             results.append("Error: Entity name is required")
             continue
@@ -213,6 +214,7 @@ async def save_entities(
 async def save_relations(relations: list[dict[str, Any]], agent_id: str, conn):
     valid_relations = []
     errors = []
+    logger.info(f"Saving {len(relations)} relations (agent={agent_id})...")
     for r in relations:
         # Standard terminology: Subject-Predicate-Object
         # Fallback to source/target/relation_type for migration period
@@ -277,6 +279,7 @@ async def save_observations(
     errors = []
     success_count = 0
 
+    logger.info(f"Saving {len(observations)} observations (agent={agent_id})...")
     for i, o in enumerate(observations):
         entity_name = o.get("entity_name", "").strip()
         content = o.get("content", "").strip()
@@ -344,29 +347,49 @@ async def get_graph_data(query: str | None = None):
         if query:
             cursor = await conn.execute(
                 "SELECT * FROM entities WHERE "
-                "(name LIKE ? OR description LIKE ?) AND status = 'active'",
-                (f"%{query}%", f"%{query}%"),
+                "(name LIKE ? OR description LIKE ? OR entity_type LIKE ?) AND status = 'active'",
+                (f"%{query}%", f"%{query}%", f"%{query}%"),
             )
             matched_entities = await cursor.fetchall()
-            matched_names = [e["name"] for e in matched_entities]
+            entity_matched_names = [e["name"] for e in matched_entities]
 
-            if not matched_names:
+            # Also search observations directly
+            cursor = await conn.execute(
+                "SELECT * FROM observations WHERE content LIKE ? AND status = 'active'",
+                (f"%{query}%",),
+            )
+            direct_observations = await cursor.fetchall()
+            obs_matched_entity_names = list(set([o["entity_name"] for o in direct_observations]))
+
+            all_matched_names = list(set(entity_matched_names + obs_matched_entity_names))
+
+            if not all_matched_names:
                 return {"entities": [], "relations": [], "observations": []}
 
-            placeholders = ",".join(["?"] * len(matched_names))
+            placeholders = ",".join(["?"] * len(all_matched_names))
             cursor = await conn.execute(
                 f"SELECT * FROM relations WHERE (subject IN ({placeholders}) "
                 f"OR object IN ({placeholders})) AND status = 'active'",
-                matched_names + matched_names,
+                all_matched_names + all_matched_names,
             )
             relations = await cursor.fetchall()
 
+            # For observations, we take the union of direct matches and those linked to matched entities
             cursor = await conn.execute(
                 "SELECT * FROM observations WHERE entity_name IN "
                 f"({placeholders}) AND status = 'active'",
-                matched_names,
+                all_matched_names,
             )
-            observations = await cursor.fetchall()
+            linked_observations = await cursor.fetchall()
+
+            # Combine and de-duplicate observations by content/entity
+            final_obs_map = {}
+            for o in list(direct_observations) + list(linked_observations):
+                key = (o["entity_name"], o["content"])
+                if key not in final_obs_map:
+                    final_obs_map[key] = o
+            
+            final_observations = list(final_obs_map.values())
 
             return {
                 "entities": [dict(e) for e in matched_entities],
@@ -377,7 +400,7 @@ async def get_graph_data(query: str | None = None):
                         "content": o["content"],
                         "at": o["timestamp"],
                     }
-                    for o in observations
+                    for o in final_observations
                 ],
             }
         else:

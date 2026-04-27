@@ -20,8 +20,9 @@ async def create_snapshot_logic(name: str, description: str = ""):
     snapshot_file = os.path.join(snapshot_dir, f"snapshot_{ts}.db")
 
     try:
-        shutil.copy2(db_path, snapshot_file)
         async with await async_get_connection() as conn:
+            # Use SQLite's VACUUM INTO for a safe, consistent snapshot of a running DB
+            await conn.execute(f"VACUUM INTO '{snapshot_file}'")
             await conn.execute(
                 "INSERT INTO snapshots (name, description, file_path) VALUES (?, ?, ?)",
                 (name, description, snapshot_file),

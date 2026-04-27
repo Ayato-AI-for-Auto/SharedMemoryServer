@@ -134,13 +134,33 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
             metadata = await cursor.fetchall()
             meta_map = {m[0]: (m[1], m[2]) for m in metadata}
 
+            # --- Keyword Search ---
+            keyword_results = await perform_keyword_search(query)
+            keyword_map = {r["id"]: r["score"] for r in keyword_results}
+
             results = []
+            seen_cids = set()
+
+            # Process all vectors
             for i, cid in enumerate(all_cids):
                 sim = float(similarities[i])
                 count, last = meta_map.get(cid, (0, datetime.datetime.now().isoformat()))
                 importance = calculate_importance(count, last)
-                final_score = (sim * 0.7) + (importance * 0.3)
+                
+                # Boost if keyword match exists
+                k_score = keyword_map.get(cid, 0.0)
+                final_score = (sim * 0.5) + (importance * 0.2) + (k_score * 0.3)
+                
                 results.append((cid, final_score))
+                seen_cids.add(cid)
+
+            # Add keyword hits that weren't in vectors (unlikely but possible if not yet embedded)
+            for cid, k_score in keyword_map.items():
+                if cid not in seen_cids:
+                    count, last = meta_map.get(cid, (0, datetime.datetime.now().isoformat()))
+                    importance = calculate_importance(count, last)
+                    final_score = (k_score * 0.5) + (importance * 0.5)
+                    results.append((cid, final_score))
 
             results.sort(key=lambda x: x[1], reverse=True)
             # Use candidate_limit for re-ranking population

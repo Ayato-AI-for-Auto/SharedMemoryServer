@@ -4,11 +4,18 @@ from typing import Any
 from shared_memory import logic
 from shared_memory.config import settings
 from shared_memory.embeddings import get_gemini_client
-from shared_memory.utils import AIRateLimiter, get_logger, log_error, log_info
+from shared_memory.utils import (
+    AIRateLimiter,
+    get_logger,
+    log_error,
+    log_info,
+    retry_on_ai_quota,
+)
 
 logger = get_logger("distiller")
 
 
+@retry_on_ai_quota(max_retries=3)
 async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str, Any]]):
     """
     Analyzes thought history using Gemini to extract structured knowledge.
@@ -67,8 +74,8 @@ async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str
     """
 
     try:
-        # Enforce Rate Limiting
-        await AIRateLimiter.throttle()
+        # Enforce Rate Limiting (Generation task)
+        await AIRateLimiter.throttle(task_type="generation")
 
         # Use centralized model from settings
         response = await client.aio.models.generate_content(
@@ -118,6 +125,7 @@ async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str
         # because distillation is a background/secondary task.
 
 
+@retry_on_ai_quota(max_retries=3)
 async def incremental_distill_knowledge(session_id: str, thought: str):
     """
     Extracts atomic knowledge from a single thought step (Real-time).
@@ -145,8 +153,8 @@ async def incremental_distill_knowledge(session_id: str, thought: str):
     }}
     """
     try:
-        # Enforce Rate Limiting
-        await AIRateLimiter.throttle()
+        # Enforce Rate Limiting (Generation task)
+        await AIRateLimiter.throttle(task_type="generation")
 
         response = await client.aio.models.generate_content(
             model=settings.generative_model,

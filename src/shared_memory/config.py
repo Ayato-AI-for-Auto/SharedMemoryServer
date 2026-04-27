@@ -115,17 +115,17 @@ class Settings:
     @property
     def generative_model(self) -> str:
         """推論や知識抽出に使用する生成モデル名を返す。"""
-        return os.environ.get("GENERATIVE_MODEL", "gemini-2.0-flash")
+        return "gemma-4-31b-it"
 
     @property
     def embedding_model(self) -> str:
         """埋め込みベクトル生成に使用するモデル名を返す。"""
-        return os.environ.get("EMBEDDING_MODEL", "models/gemini-embedding-001")
+        return "models/gemini-embedding-001"
 
     @property
     def enable_structured_logging(self) -> bool:
         """構造化ログの有効化フラグ。"""
-        return os.environ.get("ENABLE_STRUCTURED_LOGGING", "false").lower() == "true"
+        return False
 
 
 # Singleton instance

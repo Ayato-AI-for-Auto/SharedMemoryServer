@@ -49,7 +49,9 @@ class FakeModels:
         return FakeGeminiResponse(text='{"conflict": false, "reason": "No conflict"}')
 
     def list(self):
-        return [type("Model", (), {"name": "models/gemini-2.0-flash-exp"})]
+        # Return instances of models, not classes
+        model_type = type("Model", (), {"name": "models/gemini-2.0-flash-exp"})
+        return [model_type()]
 
 
 class FakeAsyncModels:

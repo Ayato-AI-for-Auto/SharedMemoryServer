@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import logging
 import os
+import signal
 import sys
 
 # ruff: noqa: E402
@@ -20,17 +21,17 @@ LOG_FILE = os.path.join(LOG_DIR, "server.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filename=LOG_FILE,
-    filemode="a",
+    stream=sys.stderr,
 )
 logger = logging.getLogger("shared_memory.server")
-logger.info("--- SERVER SCRIPT INITIALIZING (Robust Mode) ---")
+logger.info("--- SERVER SCRIPT STARTING (Terminal Log Mode) ---")
 
 from typing import Any
 
 from fastmcp import FastMCP
 
 # Delayed imports to catch potential errors in submodules
+logger.info("Importing core submodules (logic, thought_logic, database)...")
 try:
     from shared_memory import logic, thought_logic
     from shared_memory.database import close_all_connections, init_db
@@ -38,7 +39,8 @@ try:
     logger.info("Core submodules imported successfully")
 except Exception as e:
     logger.error(f"CRITICAL: Failed to import submodules: {e}", exc_info=True)
-    sys.exit(1)
+    # Re-raise to ensure the process fails visibly
+    raise e
 
 # Create MCP server instance
 mcp = FastMCP("SharedMemoryServer")
@@ -51,15 +53,24 @@ _INIT_ERROR = None
 async def _background_init():
     """Heavy lifting initialization in the background."""
     global _INIT_ERROR
+    logger.info("ENTERED _background_init")
     try:
-        logger.info("Starting background initialization (DB, Graphs)...")
+        logger.info("STEP 1: Starting main database initialization...")
         await init_db()
+        logger.info("STEP 1: SUCCESS (Main DB initialized)")
+
+        logger.info("STEP 2: Starting thoughts database initialization...")
         await thought_logic.init_thoughts_db()
-        logger.info("Background initialization COMPLETE.")
+        logger.info("STEP 2: SUCCESS (Thoughts DB initialized)")
+
+        logger.info("BACKGROUND INITIALIZATION COMPLETE.")
     except Exception as e:
         _INIT_ERROR = e
-        logger.error(f"Background initialization FAILED: {e}", exc_info=True)
+        logger.error(f"CRITICAL FAILURE in _background_init: {e}", exc_info=True)
+        # We don't exit here because we want to report this via ensure_initialized()
+        # when a tool is called, providing better feedback to the user.
     finally:
+        logger.info("EXITING _background_init (Initialized Event SET)")
         _INITIALIZED_EVENT.set()
 
 
@@ -70,22 +81,30 @@ def trigger_init():
     global _INIT_STARTED
     if not _INIT_STARTED:
         _INIT_STARTED = True
-        logger.info("Triggering background initialization...")
-        asyncio.create_task(_background_init())
+        logger.info("Triggering background initialization via asyncio task...")
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_background_init())
+        except RuntimeError:
+            # No loop running yet, mcp.run will handle it via lifespan or tool call
+            logger.info("No event loop running yet. Initialization deferred.")
+            _INIT_STARTED = False
 
+
+_INIT_LOCK = asyncio.Lock()
 
 async def ensure_initialized():
-    """Wait for background initialization if it's still running."""
-    trigger_init()
-
+    """Ensures the server is fully ready before tool execution."""
     if not _INITIALIZED_EVENT.is_set():
-        logger.info("Tool called before initialization finished. Waiting...")
-        await _INITIALIZED_EVENT.wait()
+        async with _INIT_LOCK:
+            if not _INITIALIZED_EVENT.is_set():
+                # Run initialization directly in this task to avoid task leak in tests
+                await _background_init()
 
     if _INIT_ERROR:
         from shared_memory.exceptions import DatabaseError
 
-        raise DatabaseError(f"System failed to initialize: {_INIT_ERROR}")
+        raise DatabaseError(f"Server failed to initialize: {_INIT_ERROR}")
 
 
 @mcp.lifespan()
@@ -94,13 +113,14 @@ async def lifespan(mcp_instance: FastMCP):
     Handles server startup and shutdown.
     Ensures handshake is fast by moving DB init to background.
     """
+    logger.info("Lifespan STARTING...")
     # Start init in background if not already started
     trigger_init()
 
     yield
 
     # CLEANUP: Close persistent singleton connections on shutdown
-    logger.info("Shutting down server, closing connections...")
+    logger.info("Lifespan SHUTTING DOWN, closing connections...")
     await close_all_connections()
 
 
@@ -111,9 +131,9 @@ async def lifespan(mcp_instance: FastMCP):
 
 @mcp.tool()
 async def save_memory(
-    entities: list[dict[str, Any] | str] | None = None,
-    relations: list[dict[str, Any]] | None = None,
-    observations: list[dict[str, Any] | str] | None = None,
+    entities: Any | None = None,
+    relations: Any | None = None,
+    observations: Any | None = None,
     bank_files: Any | None = None,
     agent_id: str = "default_agent",
 ) -> str:
@@ -279,19 +299,44 @@ def main():
     else:
         logger.info(f"SharedMemoryServer: Starting in SSE mode on port {args.port}")
 
-    # Silence internal MCP and FastMCP loggers to prevent any stray output
-    logging.getLogger("mcp").setLevel(logging.WARNING)
-    logging.getLogger("fastmcp").setLevel(logging.WARNING)
+    # Force logs to be flushed immediately
+    for h in logging.root.handlers:
+        h.flush()
+
+    # Enable internal logging for debugging startup issues
+    logging.getLogger("mcp").setLevel(logging.INFO)
+    logging.getLogger("fastmcp").setLevel(logging.INFO)
+    logger.info("FastMCP Internal loggers set to INFO")
+
+    # Handle signals for graceful shutdown (especially on Windows)
+    def signal_handler(sig, frame):
+        logger.info(f"Received signal {sig}, shutting down...")
+        # Since we are in a sync handler, we can't easily await close_all_connections
+        # But we can try to schedule it or just exit if mcp.run handles it.
+        # FastMCP usually handles signals, but we want to be explicit.
+        sys.exit(0)
+
+    if sys.platform == "win32":
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGBREAK, signal_handler)
+    else:
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
 
     try:
         if use_sse:
+            logger.info(f"Launching FastMCP in SSE mode on port {args.port}...")
             mcp.run(transport="sse", port=args.port)
         else:
+            logger.info("Launching FastMCP in STDIO mode...")
             # transport="stdio" is default
             mcp.run(transport="stdio")
-    except Exception:
-        logger.exception("CRITICAL: Server crashed in mcp.run()")
-        sys.exit(1)
+    except Exception as e:
+        logger.error(f"CRITICAL: Server crashed in mcp.run(): {e}", exc_info=True)
+        # Flush logs before exit
+        for h in logging.root.handlers:
+            h.flush()
+        raise e
 
 
 if __name__ == "__main__":
