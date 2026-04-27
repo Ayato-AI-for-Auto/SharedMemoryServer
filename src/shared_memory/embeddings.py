@@ -36,7 +36,7 @@ async def compute_embeddings_bulk(texts: list[str]) -> list[list[float]]:
     return await compute_embedding(texts)
 
 
-@retry_on_ai_quota(max_retries=3)
+@retry_on_ai_quota(max_retries=3, rotate_models=False)
 @retry_on_db_lock()
 async def compute_embedding(
     text_list: str | list[str], conn: Any = None
