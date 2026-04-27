@@ -2,14 +2,13 @@ import json
 from typing import Any
 
 from shared_memory import logic
+from shared_memory.ai_control import AIRateLimiter, retry_on_ai_quota
 from shared_memory.config import settings
 from shared_memory.embeddings import get_gemini_client
 from shared_memory.utils import (
-    AIRateLimiter,
     get_logger,
     log_error,
     log_info,
-    retry_on_ai_quota,
 )
 
 logger = get_logger("distiller")
@@ -61,9 +60,9 @@ async def auto_distill_knowledge(session_id: str, thought_history: list[dict[str
       ],
       "relations": [
         {{
-          "source": "Source Name",
-          "target": "Target Name",
-          "relation_type": "type",
+          "subject": "Subject Entity",
+          "object": "Object Entity",
+          "predicate": "relation type",
           "justification": "why?"
         }}
       ],
@@ -147,7 +146,7 @@ async def incremental_distill_knowledge(session_id: str, thought: str):
     {{
       "entities": [{{ "name": "Name", "entity_type": "type", "description": "desc" }}],
       "relations": [
-        {{ "source": "A", "target": "B", "relation_type": "type", "justification": "why" }}
+        {{ "subject": "A", "object": "B", "predicate": "type", "justification": "why" }}
       ],
       "observations": [{{ "entity_name": "Name", "content": "Fact" }}]
     }}
