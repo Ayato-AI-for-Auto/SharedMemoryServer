@@ -98,13 +98,17 @@ class AsyncSQLiteConnection:
                 else:
                     if _MAIN_CONNECTION is None:
                         logger.info(f"Establishing NEW singleton connection to: {self.db_path}")
-                        _MAIN_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
-                        _MAIN_CONNECTION.row_factory = aiosqlite.Row
-                        await _MAIN_CONNECTION.execute("PRAGMA foreign_keys = ON")
-                        await _MAIN_CONNECTION.execute("PRAGMA journal_mode = WAL")
-                        await _MAIN_CONNECTION.execute("PRAGMA synchronous = NORMAL")
-                        await _MAIN_CONNECTION.execute("PRAGMA cache_size = -2000")
-                        logger.info("Main connection successfully established and configured.")
+                        try:
+                            _MAIN_CONNECTION = await aiosqlite.connect(self.db_path, timeout=30.0)
+                            _MAIN_CONNECTION.row_factory = aiosqlite.Row
+                            await _MAIN_CONNECTION.execute("PRAGMA foreign_keys = ON")
+                            await _MAIN_CONNECTION.execute("PRAGMA journal_mode = WAL")
+                            await _MAIN_CONNECTION.execute("PRAGMA synchronous = NORMAL")
+                            await _MAIN_CONNECTION.execute("PRAGMA cache_size = -2000")
+                            logger.info("Main connection successfully established and configured.")
+                        except Exception as e:
+                            logger.error(f"CRITICAL: Failed to establish main DB connection: {e}", exc_info=True)
+                            raise
                     self.conn = _MAIN_CONNECTION
 
             return self.conn
@@ -218,59 +222,62 @@ async def init_db(force: bool = False):
 
         logger.info("Starting table creation/verification sequence...")
         cursor = await conn.cursor()
-        await cursor.execute("""
-            CREATE TABLE IF NOT EXISTS entities (
-                name TEXT PRIMARY KEY,
-                entity_type TEXT,
-                description TEXT,
-                importance INTEGER DEFAULT 5,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_by TEXT,
-                updated_by TEXT,
-                status TEXT DEFAULT 'active'
-            )
-        """)
-        await cursor.execute("""
-            CREATE TABLE IF NOT EXISTS relations (
-                subject TEXT,
-                object TEXT,
-                predicate TEXT,
-                justification TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_by TEXT,
-                status TEXT DEFAULT 'active',
-                PRIMARY KEY (subject, object, predicate)
-            )
-        """)
-        await cursor.execute("""
-            CREATE TABLE IF NOT EXISTS observations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                entity_name TEXT,
-                content TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                created_by TEXT,
-                status TEXT DEFAULT 'active'
-            )
-        """)
-        # Explicit consistency check for critical tables
-        await cursor.execute("""
-            CREATE TABLE IF NOT EXISTS embedding_cache (
-                content_hash TEXT PRIMARY KEY,
-                vector BLOB,
-                model_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await cursor.execute("""
-            CREATE TABLE IF NOT EXISTS bank_files (
-                filename TEXT PRIMARY KEY,
-                content TEXT,
-                last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_by TEXT,
-                status TEXT DEFAULT 'active'
-            )
-        """)
+        try:
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS entities (
+                    name TEXT PRIMARY KEY,
+                    entity_type TEXT,
+                    description TEXT,
+                    importance INTEGER DEFAULT 5,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT,
+                    updated_by TEXT,
+                    status TEXT DEFAULT 'active'
+                )
+            """)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS relations (
+                    subject TEXT,
+                    object TEXT,
+                    predicate TEXT,
+                    justification TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT,
+                    status TEXT DEFAULT 'active',
+                    PRIMARY KEY (subject, object, predicate)
+                )
+            """)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_name TEXT,
+                    content TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT,
+                    status TEXT DEFAULT 'active'
+                )
+            """)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS embedding_cache (
+                    content_hash TEXT PRIMARY KEY,
+                    vector BLOB,
+                    model_name TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bank_files (
+                    filename TEXT PRIMARY KEY,
+                    content TEXT,
+                    last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT,
+                    status TEXT DEFAULT 'active'
+                )
+            """)
+        except Exception as e:
+            logger.error(f"CRITICAL: Failed to create/verify tables: {e}", exc_info=True)
+            raise
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS embeddings (
                 content_id TEXT PRIMARY KEY,

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import math
 import os
 import re
@@ -9,7 +8,7 @@ import time
 from datetime import UTC, datetime
 from functools import wraps
 
-from loguru import logger as loguru_logger
+from loguru import logger
 
 from shared_memory.exceptions import SecurityError
 
@@ -22,31 +21,22 @@ def set_structured_logging(enabled: bool):
     _STRUCTURED_LOGGING = enabled
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str):
     """
-    Returns a logger configured for the SharedMemoryServer.
-    Encapsulates standard library logging setup.
+    Returns a loguru logger bound to a specific name.
     """
-    logger = logging.getLogger(f"shared_memory.{name}")
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stderr)
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-    return logger
+    return logger.bind(name=f"shared_memory.{name}")
 
 
 def log_info(msg: str):
     """Abstraction for logging info messages."""
-    get_logger("core").info(msg)
+    logger.info(msg)
 
 
 def log_error(msg: str, error: Exception | None = None):
     """Abstraction for logging error messages with optional exception details."""
-    logger = get_logger("core")
     if error:
-        logger.error(f"{msg}: {error}", exc_info=True)
+        logger.exception(f"{msg}: {error}")
     else:
         logger.error(msg)
 
@@ -286,47 +276,99 @@ def parse_retry_delay(error: Exception) -> float | None:
         pass
 
     return None
+class ModelManager:
+    """
+    Manages Generative AI model rotation for fallback.
+    LLM only. NEVER rotate embedding models.
+    """
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self.current_index = 0
+        self._models = None
+
+    @property
+    def models(self):
+        if self._models is None:
+            from shared_memory.config import GOOGLE_AI_MODELS
+            self._models = GOOGLE_AI_MODELS
+        return self._models
+
+    def get_current_model(self) -> str:
+        return self.models[self.current_index]
+
+    async def rotate(self) -> bool:
+        """
+        Rotates to the next model. 
+        Returns True if we have completed a full cycle and are back at the start.
+        """
+        async with self._lock:
+            self.current_index = (self.current_index + 1) % len(self.models)
+            is_full_cycle = (self.current_index == 0)
+            logger.info(f"Model rotated to: {self.get_current_model()} (Full cycle: {is_full_cycle})")
+            return is_full_cycle
+
+# Singleton Model Manager
+model_manager = ModelManager()
 
 
-def retry_on_ai_quota(max_retries: int = 3, initial_backoff: float = 2.0):
+
+def retry_on_ai_quota(max_retries: int = 10):
     """
     Decorator for retrying AI API calls on 429 RESOURCE_EXHAUSTED errors.
-    Supports exponential backoff with jitter and respects retryDelay from API.
+    Implements model fallback:
+    1. Try next model in list immediately.
+    2. If all models fail (full cycle), wait for retryDelay and start over.
     """
 
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             last_error = None
-            for attempt in range(max_retries + 1):
+            
+            # We use a wider retry loop because each "attempt" might just be a model swap
+            total_attempts = max_retries * 2 
+            
+            for attempt in range(total_attempts):
                 try:
+                    # Inject current model if it's an LLM call
+                    current_model = model_manager.get_current_model()
+                    
+                    # If 'model' is passed, we check if it's one of our LLMs to rotate
+                    if "model" in kwargs:
+                        from shared_memory.config import GOOGLE_AI_MODELS
+                        if kwargs["model"] in GOOGLE_AI_MODELS:
+                            kwargs["model"] = current_model
+                    
                     return await func(*args, **kwargs)
+                
                 except Exception as e:
                     last_error = e
                     e_str = str(e).upper()
+                    
                     if "429" in e_str or "RESOURCE_EXHAUSTED" in e_str:
-                        if attempt == max_retries:
-                            loguru_logger.error(
-                                f"AI Quota exhausted after {max_retries} retries: {e}"
+                        # Attempt to rotate model
+                        is_full_cycle = await model_manager.rotate()
+                        
+                        if is_full_cycle:
+                            # We exhausted all models in the list. Now we must wait.
+                            wait_time = parse_retry_delay(e) or 10.0
+                            logger.warning(
+                                f"All models exhausted (429). Full cycle complete. "
+                                f"Waiting {wait_time}s before restarting from {model_manager.get_current_model()}..."
                             )
-                            raise
-
-                        # Determine wait time
-                        retry_delay = parse_retry_delay(e)
-                        if retry_delay:
-                            wait_time = retry_delay + random.uniform(0, 1.0)
+                            await asyncio.sleep(wait_time)
                         else:
-                            wait_time = (initial_backoff * (2**attempt)) + random.uniform(0, 1.0)
-
-                        loguru_logger.warning(
-                            f"AI Quota Exceeded (429). Attempt {attempt + 1}/{max_retries}. "
-                            f"Retrying in {wait_time:.2f}s..."
-                        )
-                        await asyncio.sleep(wait_time)
-                    else:
-                        # Not a quota error, re-raise immediately
-                        raise
-
+                            # We have a fallback model available. Retry immediately (with minor jitter).
+                            logger.info(
+                                f"Model 429 detected. Falling back to {model_manager.get_current_model()} immediately..."
+                            )
+                            await asyncio.sleep(random.uniform(0.1, 0.5))
+                        
+                        continue
+                    
+                    # For other errors, re-raise immediately
+                    raise e
+            
             raise last_error
 
         return wrapper
@@ -367,7 +409,7 @@ class AIRateLimiter:
 
             if elapsed < interval:
                 wait_time = interval - elapsed
-                loguru_logger.debug(
+                logger.debug(
                     f"AI Quota Throttling ({task_type}): Waiting {wait_time:.2f}s..."
                 )
                 await asyncio.sleep(wait_time)

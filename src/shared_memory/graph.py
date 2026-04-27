@@ -14,52 +14,64 @@ from shared_memory.utils import AIRateLimiter, get_logger, log_error, mask_sensi
 logger = get_logger("graph")
 
 
-async def check_conflict(entity_name: str, new_content: str, agent_id: str, conn=None):
+async def check_conflict(entity_name: str, new_contents: list[str], agent_id: str, conn=None):
     """
-    Checks if a new observation contradicts existing knowledge using Gemini.
+    Checks if a list of new observations contradicts existing knowledge using Gemini.
+    Returns a list of (is_conflict, reason) tuples.
     """
+    if not new_contents:
+        return []
+
     try:
         client = get_gemini_client()
         if not client:
             log_error("Conflict check aborted: Gemini client not initialized (check API key)")
-            return False, None
+            return [(False, None)] * len(new_contents)
 
-        logger.info(f"Checking conflict for entity='{entity_name}'")
+        logger.info(f"Checking conflicts for entity='{entity_name}' ({len(new_contents)} items)")
         if conn is None:
             async with await async_get_connection() as managed_conn:
-                return await _check_conflict_internal(
-                    entity_name, new_content, agent_id, managed_conn, client
+                return await _check_conflicts_internal(
+                    entity_name, new_contents, agent_id, managed_conn, client
                 )
         else:
-            return await _check_conflict_internal(entity_name, new_content, agent_id, conn, client)
+            return await _check_conflicts_internal(
+                entity_name, new_contents, agent_id, conn, client
+            )
     except Exception as e:
         log_error("Conflict check failed", e)
-        return False, None
+        return [(False, None)] * len(new_contents)
 
 
-async def _check_conflict_internal(entity_name: str, new_content: str, agent_id: str, conn, client):
-    # Fetch up to 3 most recent observations for context
+async def _check_conflicts_internal(
+    entity_name: str, new_contents: list[str], agent_id: str, conn, client
+):
+    # Fetch up to 5 most recent observations for richer context
     cursor = await conn.execute(
-        "SELECT content FROM observations WHERE entity_name = ? ORDER BY timestamp DESC LIMIT 3",
+        "SELECT content FROM observations WHERE entity_name = ? ORDER BY timestamp DESC LIMIT 5",
         (entity_name,),
     )
     existing = await cursor.fetchall()
 
     if not existing:
-        return False, None
+        return [(False, None)] * len(new_contents)
 
     existing_text = "\n".join([f"- {row[0]}" for row in existing])
+    new_text_numbered = "\n".join([f"{i}. {content}" for i, content in enumerate(new_contents)])
+
     prompt = (
-        "You are a Fact-Checking Engine. Check if the following NEW statement "
-        f"contradicts the EXISTING knowledge about '{entity_name}'.\n\n"
+        "You are a Fact-Checking Engine. Check if any of the following NEW statements "
+        f"contradict the EXISTING knowledge about '{entity_name}'.\n\n"
         f"EXISTING KNOWLEDGE:\n{existing_text}\n\n"
-        f"NEW STATEMENT:\n{new_content}\n\n"
-        'Output MUST be JSON: {"conflict": bool, "reason": "string"}'
+        f"NEW STATEMENTS:\n{new_text_numbered}\n\n"
+        "Output MUST be a JSON list of objects, one for each NEW statement in order:\n"
+        '[{"conflict": bool, "reason": "string"}, ...]'
     )
 
     # Enforce Rate Limiting
     await AIRateLimiter.throttle()
 
+    results = []
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -69,7 +81,9 @@ async def _check_conflict_internal(entity_name: str, new_content: str, agent_id:
                 config={"response_mime_type": "application/json"},
             )
             data = json.loads(response.text)
-            break
+            if isinstance(data, list) and len(data) == len(new_contents):
+                results = data
+                break
         except Exception as e:
             error_str = str(e).lower()
             if (
@@ -80,22 +94,29 @@ async def _check_conflict_internal(entity_name: str, new_content: str, agent_id:
                 await asyncio.sleep(wait_time)
                 continue
             log_error("Conflict check failed during AI call", e)
-            return False, None
-    if data.get("conflict"):
-        reason = data.get("reason", "Unknown contradiction")
-        logger.warning(f"CONFLICT DETECTED in '{entity_name}': {reason}")
-        # Log to DB
-        await conn.execute(
-            "INSERT INTO conflicts "
-            "(entity_name, existing_content, new_content, reason, agent_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (entity_name, existing_text, new_content, reason, agent_id),
-        )
-        await conn.commit()
-        return True, reason
+            return [(False, None)] * len(new_contents)
 
-    logger.debug(f"No conflict detected for '{entity_name}'")
-    return False, None
+    if not results:
+        return [(False, None)] * len(new_contents)
+
+    final_results = []
+    for i, item in enumerate(results):
+        is_conflict = item.get("conflict", False)
+        reason = item.get("reason") if is_conflict else None
+        final_results.append((is_conflict, reason))
+
+        if is_conflict:
+            logger.warning(f"CONFLICT DETECTED in '{entity_name}': {reason}")
+            # Log to DB
+            await conn.execute(
+                "INSERT INTO conflicts "
+                "(entity_name, existing_content, new_content, reason, agent_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (entity_name, existing_text, new_contents[i], reason, agent_id),
+            )
+
+    await conn.commit()
+    return final_results
 
 
 async def save_entities(
@@ -299,8 +320,9 @@ async def save_observations(
                     {"entity": entity_name, "reason": conflict_info.get("reason")}
                 )
         else:
-            is_conflict, reason = await check_conflict(entity_name, content, agent_id, conn=conn)
-            if is_conflict:
+            results = await check_conflict(entity_name, [content], agent_id, conn=conn)
+            if results and results[0][0]:
+                is_conflict, reason = results[0]
                 conflicts_to_report.append({"entity": entity_name, "reason": reason})
 
         await conn.execute(

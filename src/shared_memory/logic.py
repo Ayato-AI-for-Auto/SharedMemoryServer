@@ -211,14 +211,45 @@ async def save_memory_core(
         async with get_write_semaphore():
             # 2.1 Conflict Checks (Inside semaphore to avoid races)
             logger.info(f"Phase 2.1 (Conflict Checks) START for {len(observations)} observations")
-            precomputed_observations_conflicts = []
+            
+            # Group observations by entity to minimize AI calls
+            entity_groups = {}
             for i, obs in enumerate(observations):
-                is_conflict, reason = await graph.check_conflict(
-                    obs.get("entity_name", ""), obs.get("content", ""), agent_id
+                name = obs.get("entity_name", "Unknown")
+                if name not in entity_groups:
+                    entity_groups[name] = []
+                entity_groups[name].append({"index": i, "content": obs.get("content", "")})
+            
+            # Create parallel tasks (one task per unique entity)
+            unique_entities = list(entity_groups.keys())
+            conflict_tasks = [
+                graph.check_conflict(
+                    entity_name, 
+                    [item["content"] for item in entity_groups[entity_name]], 
+                    agent_id
                 )
-                precomputed_observations_conflicts.append(
-                    {"index": i, "is_conflict": is_conflict, "reason": reason}
-                )
+                for entity_name in unique_entities
+            ]
+            
+            # Execute all group checks in parallel
+            group_results = await asyncio.gather(*conflict_tasks, return_exceptions=True)
+            
+            # Map results back to original indices
+            precomputed_observations_conflicts = [None] * len(observations)
+            for entity_name, result in zip(unique_entities, group_results, strict=True):
+                if isinstance(result, Exception):
+                    logger.error(f"Batch conflict check failed for entity {entity_name}: {result}")
+                    # Fill with default (no conflict) for safety on error
+                    for item in entity_groups[entity_name]:
+                        precomputed_observations_conflicts[item["index"]] = {
+                            "index": item["index"], "is_conflict": False, "reason": str(result)
+                        }
+                else:
+                    # result is a list of (is_conflict, reason) tuples
+                    for item, (is_conflict, reason) in zip(entity_groups[entity_name], result, strict=True):
+                        precomputed_observations_conflicts[item["index"]] = {
+                            "index": item["index"], "is_conflict": is_conflict, "reason": reason
+                        }
 
             # 2.2 Rapid DB Write
             async with await async_get_connection() as conn:

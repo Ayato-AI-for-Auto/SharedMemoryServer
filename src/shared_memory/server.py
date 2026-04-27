@@ -1,9 +1,36 @@
 import argparse
 import asyncio
+import json
 import logging
 import os
 import signal
 import sys
+import time
+
+from loguru import logger
+
+# Intercept standard logging with Loguru
+class InterceptHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+        frame, depth = sys._getframe(6), 6
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+
+# Configure Loguru for premium look
+logger.remove()
+logger.add(
+    sys.stderr,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    level="INFO",
+)
 
 # ruff: noqa: E402
 
@@ -12,19 +39,7 @@ _REAL_STDOUT = sys.stdout
 # Redirect sys.stdout to stderr to catch any noise from libraries during import
 sys.stdout = sys.stderr
 
-# Emergency logging setup - must be before other imports to catch their errors
-# Ensure logs directory exists
-LOG_DIR = "C:/Users/saiha/My_Service/programing/MCP/SharedMemoryServer/logs"
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE = os.path.join(LOG_DIR, "server.log")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stderr,
-)
-logger = logging.getLogger("shared_memory.server")
-logger.info("--- SERVER SCRIPT STARTING (Terminal Log Mode) ---")
+logger.info("--- SERVER SCRIPT STARTING (Loguru Mode) ---")
 
 from typing import Any
 
@@ -78,17 +93,25 @@ _INIT_STARTED = False
 
 
 def trigger_init():
+    """
+    Triggers initialization by scheduling it on the current event loop.
+    """
     global _INIT_STARTED
-    if not _INIT_STARTED:
-        _INIT_STARTED = True
-        logger.info("Triggering background initialization via asyncio task...")
-        try:
-            loop = asyncio.get_running_loop()
+    if _INIT_STARTED:
+        return
+    _INIT_STARTED = True
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            logger.info("Event loop is already running. Scheduling _background_init...")
             loop.create_task(_background_init())
-        except RuntimeError:
-            # No loop running yet, mcp.run will handle it via lifespan or tool call
-            logger.info("No event loop running yet. Initialization deferred.")
-            _INIT_STARTED = False
+        else:
+            logger.info("Event loop exists but not running. Scheduling for startup...")
+            loop.call_soon(lambda: asyncio.create_task(_background_init()))
+    except Exception as e:
+        logger.warning(f"Could not schedule init on default loop: {e}. Will fallback to tool-call trigger.")
+        _INIT_STARTED = False
 
 
 _INIT_LOCK = asyncio.Lock()
@@ -129,6 +152,15 @@ async def lifespan(mcp_instance: FastMCP):
 # ==========================================
 
 
+async def _run_save_memory_background(entities, relations, observations, bank_files, agent_id):
+    """Internal helper to run save_memory_core in background and log results/errors."""
+    try:
+        result = await logic.save_memory_core(entities, relations, observations, bank_files, agent_id)
+        logger.info(f"Background save_memory COMPLETE for agent {agent_id}: {result}")
+    except Exception as e:
+        logger.error(f"Background save_memory FAILED for agent {agent_id}: {e}", exc_info=True)
+
+
 @mcp.tool()
 async def save_memory(
     entities: Any | None = None,
@@ -138,18 +170,31 @@ async def save_memory(
     agent_id: str = "default_agent",
 ) -> str:
     """
-    Saves multiple pieces of knowledge in one transaction.
+    Saves multiple pieces of knowledge in one transaction (Asynchronous).
+    Returns immediately while processing happens in the background.
 
     - entities: List of entities with 'name' (required), 'entity_type', 'description'.
     - relations: Knowledge Graph Triples. Each dict MUST have:
         'subject' (source), 'object' (target), 'predicate' (type).
     - observations: List of factual statements linked to an entity.
-    - bank_files: Markdown documentation. Supports two formats:
-        1. Dictionary: { "filename.md": "content" }
-        2. List of objects: [ { "filename": "filename.md", "content": "content" } ]
+    - bank_files: Markdown documentation.
     """
     await ensure_initialized()
-    return await logic.save_memory_core(entities, relations, observations, bank_files, agent_id)
+    
+    # Fire and forget
+    asyncio.create_task(
+        _run_save_memory_background(entities, relations, observations, bank_files, agent_id)
+    )
+    
+    count_info = []
+    if entities: count_info.append(f"{len(entities)} entities")
+    if relations: count_info.append(f"{len(relations)} relations")
+    if observations: count_info.append(f"{len(observations)} observations")
+    if bank_files: count_info.append(f"{len(bank_files)} files")
+    
+    msg = f"Knowledge storage initiated in background for: {', '.join(count_info) if count_info else 'nothing'}."
+    logger.info(msg)
+    return msg
 
 
 @mcp.tool()
@@ -281,6 +326,9 @@ async def ping() -> str:
 
 def main():
     """Entry point for the MCP server with enhanced stability and SSE support."""
+    # Start the initialization watcher immediately
+    trigger_init()
+
     parser = argparse.ArgumentParser(description="SharedMemoryServer MCP")
     parser.add_argument("--sse", action="store_true", help="Run with SSE transport")
     parser.add_argument("--port", type=int, default=8377, help="Port for SSE server")
@@ -299,14 +347,11 @@ def main():
     else:
         logger.info(f"SharedMemoryServer: Starting in SSE mode on port {args.port}")
 
-    # Force logs to be flushed immediately
-    for h in logging.root.handlers:
-        h.flush()
-
-    # Enable internal logging for debugging startup issues
+    # Enable internal logging for debugging startup issues via standard logging
+    # (These will be intercepted by our Loguru InterceptHandler)
     logging.getLogger("mcp").setLevel(logging.INFO)
     logging.getLogger("fastmcp").setLevel(logging.INFO)
-    logger.info("FastMCP Internal loggers set to INFO")
+    logger.info("Internal loggers (mcp, fastmcp) configured to INFO level")
 
     # Handle signals for graceful shutdown (especially on Windows)
     def signal_handler(sig, frame):
@@ -325,14 +370,14 @@ def main():
 
     try:
         if use_sse:
-            logger.info(f"Launching FastMCP in SSE mode on port {args.port}...")
+            logger.info(f"Launching SharedMemoryServer in SSE mode on port {args.port}...")
             mcp.run(transport="sse", port=args.port)
         else:
             logger.info("Launching FastMCP in STDIO mode...")
             # transport="stdio" is default
             mcp.run(transport="stdio")
     except Exception as e:
-        logger.error(f"CRITICAL: Server crashed in mcp.run(): {e}", exc_info=True)
+        logger.error(f"CRITICAL: Server crashed: {e}", exc_info=True)
         # Flush logs before exit
         for h in logging.root.handlers:
             h.flush()
