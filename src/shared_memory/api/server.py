@@ -62,10 +62,20 @@ class ProtectedStdout:
 
     def flush(self):
         sys.stderr.flush()
-        self.buffer.flush()
+        try:
+            self.buffer.flush()
+        except Exception:
+            pass
 
     def fileno(self):
+        # IMPORTANT: Return the OS-level fileno of the underlying buffer
+        # This is needed by libraries that expect a real file descriptor
         return self.buffer.fileno()
+
+    def isatty(self):
+        # Always return False for the guarded channel to avoid ANSI clutter
+        # and compatibility issues with libraries like Uvicorn
+        return False
 
 
 # Replace sys.stdout with our guard
