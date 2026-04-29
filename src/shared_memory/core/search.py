@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import re
@@ -103,15 +104,20 @@ async def perform_keyword_search(query: str, limit: int = 5, exclude_session_id:
 
 
 async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20):
-    """Hybrid search logic (Semantic + Keyword)."""
+    """Hybrid search logic (Semantic + Keyword) - Optimized with parallelism."""
     logger.info(f"perform_search START query={query}")
-    async with await async_get_connection() as conn:
-        try:
-            query_vector = await compute_embedding(query, conn=conn)
-            if not query_vector:
-                return await get_graph_data(query), await read_bank_data(query)
+    start_search = datetime.datetime.now()
+    
+    # --- Parallel Step 1: Trigger long-running tasks ---
+    # We run embedding computation and keyword search in parallel.
+    # Note: compute_embedding uses external API (Gemini), keyword search uses SQLite.
+    task_vector = asyncio.create_task(compute_embedding(query))
+    task_keyword = asyncio.create_task(perform_keyword_search(query))
 
-            # Join with entities and bank_files to filter by active status
+    try:
+        async with await async_get_connection() as conn:
+            # --- Parallel Step 2: Fetch current embeddings while waiting for tasks ---
+            # This fetches the entire embedding map for similarity calculation.
             cursor = await conn.execute("""
                 SELECT e.content_id, e.vector
                 FROM embeddings e
@@ -121,9 +127,18 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
             """)
             all_rows = await cursor.fetchall()
 
+            # --- Step 3: Wait for parallel tasks to complete ---
+            query_vector = await task_vector
+            keyword_results = await task_keyword
+            
+            if not query_vector:
+                # Fallback to basic search if embedding fails
+                return await get_graph_data(query), await read_bank_data(query)
+
             if not all_rows:
                 return await get_graph_data(query), await read_bank_data(query)
 
+            # --- Step 4: Compute similarity and combine results ---
             all_cids = [r[0] for r in all_rows]
             all_vectors = [json.loads(r[1]) for r in all_rows]
             similarities = batch_cosine_similarity(query_vector, all_vectors)
@@ -134,27 +149,23 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
             metadata = await cursor.fetchall()
             meta_map = {m[0]: (m[1], m[2]) for m in metadata}
 
-            # --- Keyword Search ---
-            keyword_results = await perform_keyword_search(query)
             keyword_map = {r["id"]: r["score"] for r in keyword_results}
 
             results = []
             seen_cids = set()
 
-            # Process all vectors
             for i, cid in enumerate(all_cids):
                 sim = float(similarities[i])
                 count, last = meta_map.get(cid, (0, datetime.datetime.now().isoformat()))
                 importance = calculate_importance(count, last)
 
-                # Boost if keyword match exists
                 k_score = keyword_map.get(cid, 0.0)
+                # Weighted fusion (Semantic 50%, Keyword 30%, Importance 20%)
                 final_score = (sim * 0.5) + (importance * 0.2) + (k_score * 0.3)
 
                 results.append((cid, final_score))
                 seen_cids.add(cid)
 
-            # Add keyword hits that weren't in vectors (unlikely but possible if not yet embedded)
             for cid, k_score in keyword_map.items():
                 if cid not in seen_cids:
                     count, last = meta_map.get(cid, (0, datetime.datetime.now().isoformat()))
@@ -163,19 +174,24 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
                     results.append((cid, final_score))
 
             results.sort(key=lambda x: x[1], reverse=True)
-            # Use candidate_limit for re-ranking population
             top_results = [r for r in results[:candidate_limit] if r[1] > 0.05]
             top_cids = [r[0] for r in top_results]
 
-            graph_data = await get_graph_data_by_cids(top_cids, conn)
-            bank_data = await get_bank_data_by_cids(top_cids, conn)
+            # Fetch detailed data in parallel
+            graph_task = asyncio.create_task(get_graph_data_by_cids(top_cids, conn))
+            bank_task = asyncio.create_task(get_bank_data_by_cids(top_cids, conn))
+            
+            graph_data, bank_data = await asyncio.gather(graph_task, bank_task)
 
+            dur = (datetime.datetime.now() - start_search).total_seconds()
+            logger.info(f"perform_search COMPLETE query={query} duration={dur:.3f}s")
+            
             await log_search_stat(query, len(top_results), hit_ids=top_cids, conn=conn)
             return graph_data, bank_data
 
-        except Exception as e:
-            log_error(f"Search failed for query: {query}", e)
-            return await get_graph_data(query), await read_bank_data(query)
+    except Exception as e:
+        log_error(f"Search failed for query: {query}", e)
+        return await get_graph_data(query), await read_bank_data(query)
 
 
 async def get_graph_data_by_cids(cids: list[str], conn):

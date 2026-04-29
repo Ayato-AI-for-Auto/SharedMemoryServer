@@ -79,7 +79,6 @@ def fake_llm_client():
         patch("shared_memory.infra.embeddings.get_gemini_client", return_value=client),
         patch("shared_memory.core.distiller.get_gemini_client", return_value=client),
         patch("shared_memory.core.graph.get_gemini_client", return_value=client),
-        patch("shared_memory.cli.salvage.get_gemini_client", return_value=client),
         patch("shared_memory.core.search.get_gemini_client", return_value=client),
     ]
 
@@ -140,7 +139,6 @@ def mock_llm(request):
         patch("shared_memory.infra.embeddings.get_gemini_client", return_value=client),
         patch("shared_memory.core.distiller.get_gemini_client", return_value=client),
         patch("shared_memory.core.graph.get_gemini_client", return_value=client),
-        patch("shared_memory.cli.salvage.get_gemini_client", return_value=client),
         patch("shared_memory.core.search.get_gemini_client", return_value=client),
     ]
 
