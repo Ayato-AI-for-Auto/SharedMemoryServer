@@ -35,10 +35,11 @@ async def test_full_save_pipeline(mock_llm):
     # ObservationがDBにあるか
     from shared_memory.infra.database import async_get_connection
 
-    conn = await async_get_connection()
-    async with conn.execute("SELECT content FROM observations") as cursor:
-        rows = await cursor.fetchall()
-        assert any("Integration test fact" in r[0] for r in rows)
+    conn_wrapper = await async_get_connection()
+    async with conn_wrapper as conn:
+        async with conn.execute("SELECT content FROM observations") as cursor:
+            rows = await cursor.fetchall()
+            assert any("Integration test fact" in r[0] for r in rows)
 
 
 @pytest.mark.asyncio
