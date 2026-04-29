@@ -1,6 +1,7 @@
 from fastmcp import FastMCP
 
-from shared_memory.core import logic, thought_logicfrom shared_memory.infra.database import init_db
+from shared_memory.core import logic, thought_logic
+from shared_memory.infra.database import init_db
 
 # Create MCP server instance (Control Plane / Admin)
 mcp = FastMCP("SharedMemoryAdminServer")

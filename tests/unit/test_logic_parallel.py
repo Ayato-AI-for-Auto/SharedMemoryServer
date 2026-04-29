@@ -4,6 +4,7 @@ import pytest
 
 from shared_memory.core import logic
 
+
 @pytest.mark.unit
 class TestLogicParallel:
     @pytest.mark.asyncio
@@ -24,7 +25,9 @@ class TestLogicParallel:
             # Just return no conflicts
             return [(False, "No conflict")] * len(new_contents)
 
-        with patch("shared_memory.core.logic.graph.check_conflict", side_effect=mock_check_conflict):
+        with patch(
+            "shared_memory.core.logic.graph.check_conflict", side_effect=mock_check_conflict
+        ):
             observations = [
                 {"entity_name": "Entity1", "content": "Fact 1.1"},
                 {"entity_name": "Entity2", "content": "Fact 2.1"},
@@ -59,7 +62,8 @@ class TestLogicParallel:
             return [(False, "No conflict")] * len(new_contents)
 
         with patch(
-            "shared_memory.core.logic.graph.check_conflict", side_effect=mock_check_conflict_with_fail
+            "shared_memory.core.logic.graph.check_conflict",
+            side_effect=mock_check_conflict_with_fail,
         ):
             observations = [
                 {"entity_name": "SafeEntity", "content": "Safe fact"},

@@ -1,8 +1,10 @@
+from unittest.mock import patch
+
 import pytest
-import asyncio
+
 from shared_memory.api import server
 from tests.unit.fake_client import FakeGeminiClient
-from unittest.mock import patch
+
 
 @pytest.mark.asyncio
 async def test_user_workflow_e2e():
@@ -16,7 +18,9 @@ async def test_user_workflow_e2e():
     fake_client = FakeGeminiClient()
     
     # Configure fake client to return expected synthesis
-    fake_client.models.set_response("generate_content", "Gemini is a powerful AI model from Google.")
+    fake_client.models.set_response(
+        "generate_content", "Gemini is a powerful AI model from Google."
+    )
     
     # Patch all modules that use get_gemini_client
     with patch("shared_memory.infra.embeddings.get_gemini_client", return_value=fake_client), \

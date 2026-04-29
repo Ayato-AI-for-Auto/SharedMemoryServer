@@ -1,9 +1,24 @@
+"""
+Architecture Note:
+本ファイル (server.py) は、現時点では意図的に単一の構成を維持しています。
+2026-04-30の設計レビューにより、以下のリスクを考慮して現状維持を決定しました：
+1. FastMCPデコレータによる循環参照 (Circular Import) の回避。
+2. 非同期プリミティブ (asyncio.Event/Lock) の安定性とイベントループ整合性の確保。
+
+開発方針：
+- 「Thin Controller」パターンを徹底する。
+- ツールの中核ロジックは必ず `shared_memory.core` 配下へ委譲し、本ファイルはI/Oおよび初期化に専念させる。
+"""
 import argparse
 import asyncio
 import logging
 import os
 import signal
 import sys
+import threading
+import time
+from contextlib import asynccontextmanager
+from typing import Any
 
 from loguru import logger
 
@@ -64,8 +79,9 @@ class ProtectedStdout:
         sys.stderr.flush()
         try:
             self.buffer.flush()
-        except Exception:
-            pass
+        except Exception as e:
+            # We log this to stderr directly since stdout might be broken
+            sys.stderr.write(f"[STDOUT_GUARD_ERROR] Flush failed: {e}\n")
 
     def fileno(self):
         # IMPORTANT: Return the OS-level fileno of the underlying buffer
@@ -85,7 +101,6 @@ logger.info("--- SERVER SCRIPT STARTING (Extreme Guard Mode) ---")
 logger.info("OS-level stdout (FD 1) has been redirected to stderr (FD 2)")
 logger.info("MCP communication will use an isolated FD.")
 
-from typing import Any
 
 from fastmcp import FastMCP
 
@@ -93,7 +108,7 @@ from fastmcp import FastMCP
 logger.info("Importing core submodules (logic, thought_logic, database)...")
 try:
     from shared_memory.core import logic, thought_logic
-    from shared_memory.infra.database import close_all_connections, init_db
+    from shared_memory.infra.database import init_db
 
     logger.info("Core submodules imported successfully")
 except Exception as e:
@@ -102,8 +117,6 @@ except Exception as e:
     raise e
 
 # Create MCP server instance
-import threading
-import time
 
 
 _LAST_ACTIVITY_TIME = time.time()
@@ -161,6 +174,9 @@ async def _background_init():
     if _INITIALIZED_EVENT is None:
         _INITIALIZED_EVENT = asyncio.Event()
 
+    # Capture the event locally to avoid issues if the global is reset during tests
+    init_event = _INITIALIZED_EVENT
+
     if _INITIALIZED_EVENT.is_set():
         return
 
@@ -198,10 +214,9 @@ async def _background_init():
         logger.error("   The server will continue to run but tools may fail.")
         logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     finally:
-        _INITIALIZED_EVENT.set()
+        init_event.set()
 
 
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(server):
@@ -248,7 +263,14 @@ def trigger_inactivity_watcher(timeout: int):
     monitor_thread.start()
 
 
-_INIT_LOCK = asyncio.Lock()
+_INIT_LOCK: asyncio.Lock | None = None
+
+
+def _get_init_lock() -> asyncio.Lock:
+    global _INIT_LOCK
+    if _INIT_LOCK is None:
+        _INIT_LOCK = asyncio.Lock()
+    return _INIT_LOCK
 
 async def ensure_initialized():
     """Ensures the server is fully ready before tool execution."""
@@ -258,7 +280,7 @@ async def ensure_initialized():
         _INITIALIZED_EVENT = asyncio.Event()
 
     if not _INITIALIZED_EVENT.is_set():
-        async with _INIT_LOCK:
+        async with _get_init_lock():
             if not _INITIALIZED_EVENT.is_set():
                 logger.info("Tool called but initialization is still in progress. Waiting...")
                 if not _INIT_STARTED:
@@ -300,15 +322,12 @@ async def _run_save_memory_background(entities, relations, observations, bank_fi
         logger.error(f"Background save_memory FAILED for agent {agent_id}: {e}", exc_info=True)
 
 
-from typing import Any, Optional
-
-
 @mcp.tool()
 async def save_memory(
-    entities: Optional[list[dict]] = None,
-    relations: Optional[list[dict]] = None,
-    observations: Optional[list[dict]] = None,
-    bank_files: Optional[dict[str, str]] = None,
+    entities: list[dict] | None = None,
+    relations: list[dict] | None = None,
+    observations: list[dict] | None = None,
+    bank_files: dict[str, str] | None = None,
     agent_id: str = "default_agent",
 ) -> str:
     """
@@ -329,6 +348,7 @@ async def save_memory(
     bank_files = bank_files or {}
 
     await ensure_initialized()
+    logger.info(f"TOOL CALL: save_memory by agent {agent_id}")
 
     # Fire and forget
     from shared_memory.common.tasks import create_background_task
@@ -363,6 +383,7 @@ async def read_memory(query: str = ""):
     Uses hybrid search (Semantic + Keyword) if a query is provided.
     """
     await ensure_initialized()
+    logger.info(f"TOOL CALL: read_memory with query: '{query}'")
     return await logic.read_memory_core(query)
 
 
@@ -383,6 +404,7 @@ async def get_graph_data(query: str = "") -> dict[str, Any] | str:
 async def synthesize_entity(entity_name: str):
     """Aggregates all known info about an entity into a master summary."""
     await ensure_initialized()
+    logger.info(f"TOOL CALL: synthesize_entity for '{entity_name}'")
     return await logic.synthesize_entity(entity_name)
 
 
@@ -454,6 +476,9 @@ async def sequential_thinking(
         logger.warning(f"Lenient parsing corrected a type mismatch in thinking args: {e}")
 
     await ensure_initialized()
+    logger.info(
+        f"TOOL CALL: sequential_thinking #{thought_number} for session {session_id}"
+    )
     return await thought_logic.process_thought_core(
         thought,
         thought_number,

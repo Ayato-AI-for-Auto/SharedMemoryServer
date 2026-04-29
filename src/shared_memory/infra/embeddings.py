@@ -6,10 +6,10 @@ from typing import Any
 
 from google import genai
 
-from shared_memory.core.ai_control import AIRateLimiter, retry_on_ai_quota
 from shared_memory.common.config import settings
-from shared_memory.infra.database import async_get_connection, retry_on_db_lock
 from shared_memory.common.utils import get_logger
+from shared_memory.core.ai_control import AIRateLimiter, retry_on_ai_quota
+from shared_memory.infra.database import async_get_connection, retry_on_db_lock
 
 logger = get_logger("embeddings")
 

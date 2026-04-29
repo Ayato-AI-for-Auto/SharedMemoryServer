@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shared_memory.infra.database import async_get_connection
 from shared_memory.core.thought_logic import process_thought_core
+from shared_memory.infra.database import async_get_connection
 
 
 @pytest.mark.asyncio

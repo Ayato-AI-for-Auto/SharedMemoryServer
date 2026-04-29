@@ -1,8 +1,9 @@
-import pytest
-import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
-from shared_memory.core import logic
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import aiosqlite
+import pytest
+
+from shared_memory.core import logic
 
 
 @pytest.mark.asyncio
@@ -34,7 +35,9 @@ async def test_memory_saving_pipeline_with_db_lock_retry():
     async def mock_get_conn_raw(*args, **kwargs):
         return mock_wrapper
 
-    with patch("shared_memory.infra.database._async_get_connection_raw", side_effect=mock_get_conn_raw) as mock_patch:
+    with patch(
+        "shared_memory.infra.database._async_get_connection_raw", side_effect=mock_get_conn_raw
+    ) as mock_patch:
         # Now we make the context manager fail
         mock_wrapper.__aenter__.side_effect = [
             aiosqlite.OperationalError("database is locked"),

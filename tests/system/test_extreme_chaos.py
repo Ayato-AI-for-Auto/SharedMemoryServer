@@ -1,7 +1,9 @@
-import pytest
-from shared_memory.api.server import save_memory, read_memory
 from unittest.mock import AsyncMock, patch
-import asyncio
+
+import pytest
+
+from shared_memory.api.server import read_memory, save_memory
+
 
 @pytest.mark.system
 @pytest.mark.asyncio

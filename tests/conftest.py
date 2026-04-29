@@ -10,8 +10,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 async def setup_teardown_db(request):
-    from shared_memory.infra.database import close_all_connections, init_db
     from shared_memory.core.thought_logic import init_thoughts_db
+    from shared_memory.infra.database import close_all_connections, init_db
 
     # Standard path resolution for testing - Use a more specific prefix
     home_dir = tempfile.mkdtemp(prefix="sm_test_")
@@ -26,8 +26,23 @@ async def setup_teardown_db(request):
 
     # Reset server initialization state
     from shared_memory.api import server
-    server._INITIALIZED_EVENT.clear()
+    server._INITIALIZED_EVENT = None
     server._INIT_ERROR = None
+    server._INIT_STARTED = False
+    server._INIT_LOCK = None
+
+    # Reset database singletons and locks
+    from shared_memory.infra import database
+    database._MAIN_CONNECTION = None
+    database._THOUGHTS_CONNECTION = None
+    database._INIT_LOCK = None
+    database._DB_INITIALIZED = False
+    database._WRITE_SEMAPHORES = {}
+
+    # Reset AI control locks
+    from shared_memory.core import ai_control
+    ai_control.model_manager._lock = None
+    ai_control.AIRateLimiter._locks = {}
 
     yield
 

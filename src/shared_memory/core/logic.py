@@ -5,9 +5,8 @@ from typing import Any
 
 import aiosqlite
 
+from shared_memory.common.utils import get_logger, log_error
 from shared_memory.core import bank, graph, search
-from shared_memory.ops import lifecycle, management
-from shared_memory.ops import health
 from shared_memory.infra.database import (
     async_get_connection,
     get_write_semaphore,
@@ -15,8 +14,8 @@ from shared_memory.infra.database import (
     retry_on_db_lock,
 )
 from shared_memory.infra.embeddings import compute_embeddings_bulk
+from shared_memory.ops import health, lifecycle, management
 from shared_memory.ops.insights import InsightEngine
-from shared_memory.common.utils import get_logger, log_error
 
 logger = get_logger("logic")
 

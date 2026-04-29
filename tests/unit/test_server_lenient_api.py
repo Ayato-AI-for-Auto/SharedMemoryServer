@@ -1,6 +1,13 @@
-import pytest
-from shared_memory.api.server import save_memory, sequential_thinking, manage_knowledge_activation
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from shared_memory.api.server import (
+    manage_knowledge_activation,
+    save_memory,
+    sequential_thinking,
+)
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -14,12 +21,14 @@ async def test_save_memory_input_normalization():
             
             # 内部で空リスト/辞書に変換されてバックグラウンドタスクに渡されているか確認
             args, _ = mock_task.call_args
-            # 第1引数はコルーチン。そのコルーチンの引数をチェックするためにラップ元の引数を検証
-            # _run_save_memory_background(entities, relations, observations, bank_files, agent_id)
-            # 実際の呼び出しは server.py:326
-            
+            coro = args[0]
+            coro.close()  # Clean up unawaited coroutine
+
             # メッセージ内容の検証
             result = await save_memory(entities=None)
+            args, _ = mock_task.call_args
+            coro = args[0]
+            coro.close()  # Clean up unawaited coroutine
             assert "Saved (initiated in background) for: nothing." in result
 
 @pytest.mark.unit
@@ -27,7 +36,9 @@ async def test_save_memory_input_normalization():
 async def test_sequential_thinking_lenient_parsing():
     """AIエージェントが文字列で数値を送ってきた場合の補正テスト"""
     with patch("shared_memory.api.server.ensure_initialized", new_callable=AsyncMock):
-        with patch("shared_memory.core.thought_logic.process_thought_core", new_callable=AsyncMock) as mock_core:
+        with patch(
+            "shared_memory.core.thought_logic.process_thought_core", new_callable=AsyncMock
+        ) as mock_core:
             # 文字列で数値を送信
             await sequential_thinking(
                 thought="Testing lenient parsing",
@@ -50,7 +61,9 @@ async def test_sequential_thinking_lenient_parsing():
 async def test_manage_activation_single_id_normalization():
     """AIエージェントが単一のIDを文字列で送ってきた場合の補正テスト"""
     with patch("shared_memory.api.server.ensure_initialized", new_callable=AsyncMock):
-        with patch("shared_memory.core.logic.manage_knowledge_activation_core", new_callable=AsyncMock) as mock_core:
+        with patch(
+            "shared_memory.core.logic.manage_knowledge_activation_core", new_callable=AsyncMock
+        ) as mock_core:
             # 単一文字列で送信
             await manage_knowledge_activation(ids="single_id_123", status="inactive")
             

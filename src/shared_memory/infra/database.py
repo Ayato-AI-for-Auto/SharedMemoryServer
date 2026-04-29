@@ -16,7 +16,14 @@ _MAIN_CONNECTION: aiosqlite.Connection | None = None
 _THOUGHTS_CONNECTION: aiosqlite.Connection | None = None
 
 # Global lock to prevent race conditions during singleton initialization
-_INIT_LOCK = asyncio.Lock()
+_INIT_LOCK: asyncio.Lock | None = None
+
+
+def _get_init_lock() -> asyncio.Lock:
+    global _INIT_LOCK
+    if _INIT_LOCK is None:
+        _INIT_LOCK = asyncio.Lock()
+    return _INIT_LOCK
 
 # Global semaphores mapped by event loop to limit concurrent DB writes
 _WRITE_SEMAPHORES: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
@@ -56,13 +63,14 @@ def retry_on_db_lock(max_retries=15, initial_delay=0.1):
                         if retries == max_retries:
                             logger.error(
                                 f"DATABASE FATAL: Max retries ({max_retries}) "
-                                f"exceeded for {func.__name__}."
+                                f"exceeded for {func.__name__}. Giving up."
                             )
                             raise DatabaseLockedError(
                                 f"Database remained locked after {max_retries} attempts."
                             ) from e
                         await asyncio.sleep(delay)
                     else:
+                        logger.error(f"DATABASE ERROR: Non-lock error in {func.__name__}: {e}")
                         raise e
             return await func(*args, **kwargs)
 
@@ -85,7 +93,7 @@ class AsyncSQLiteConnection:
     async def __aenter__(self):
         global _MAIN_CONNECTION, _THOUGHTS_CONNECTION
         try:
-            async with _INIT_LOCK:
+            async with _get_init_lock():
                 if self.is_thoughts:
                     if _THOUGHTS_CONNECTION is None:
                         logger.info(f"Establishing NEW thoughts singleton: {self.db_path}")
@@ -123,7 +131,12 @@ class AsyncSQLiteConnection:
             raise DatabaseError(f"Database connection failed: {e}") from e
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        if exc_type:
+            logger.error(
+                f"Exception detected in AsyncSQLiteConnection context for {self.db_path}: "
+                f"{exc_type.__name__}: {exc_val}"
+            )
+        # We don't close the connection here as it's a managed singleton
 
     def __await__(self):
         async def _internal():
@@ -139,7 +152,7 @@ async def close_all_connections():
     """
     global _MAIN_CONNECTION, _THOUGHTS_CONNECTION, _DB_INITIALIZED
     logger.info("Closing all singleton database connections...")
-    async with _INIT_LOCK:
+    async with _get_init_lock():
         if _MAIN_CONNECTION:
             await _MAIN_CONNECTION.close()
             _MAIN_CONNECTION = None
@@ -173,8 +186,8 @@ async def async_get_thoughts_connection():
     Returns an AsyncSQLiteConnection wrapper for the thoughts database.
     Guarantees that init_thoughts_db() has been called.
     """
-    from shared_memory.core.thought_logic import init_thoughts_db
     from shared_memory.common.utils import get_thoughts_db_path
+    from shared_memory.core.thought_logic import init_thoughts_db
 
     await init_thoughts_db()
     return await _async_get_connection_raw(get_thoughts_db_path(), is_thoughts=True)
@@ -278,8 +291,9 @@ async def init_db(force: bool = False):
                     status TEXT DEFAULT 'active'
                 )
             """)
+            logger.info("Core tables (entities, relations, observations, bank_files) verified.")
         except Exception as e:
-            logger.error(f"CRITICAL: Failed to create/verify tables: {e}", exc_info=True)
+            logger.error(f"CRITICAL: Failed to create/verify core tables: {e}", exc_info=True)
             raise
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS embeddings (

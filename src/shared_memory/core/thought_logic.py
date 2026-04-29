@@ -1,23 +1,24 @@
 import json
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
 import aiosqlite
 
-from shared_memory.infra.database import (
-    _add_column_if_missing,
-    async_get_thoughts_connection,
-    retry_on_db_lock,
-)
-from shared_memory.common.exceptions import DatabaseError
 from shared_memory.cli.salvage import salvage_related_knowledge
+from shared_memory.common.exceptions import DatabaseError
 from shared_memory.common.utils import (
     get_logger,
     get_thoughts_db_path,
     log_error,
     log_info,
     mask_sensitive_data,
+)
+from shared_memory.infra.database import (
+    _add_column_if_missing,
+    async_get_thoughts_connection,
+    retry_on_db_lock,
 )
 
 logger = get_logger("thought_logic")
@@ -96,12 +97,17 @@ async def process_thought_core(
     validation, and persistence.
     """
     try:
-        # Lazy initialization for both databases to handle cases where
+        start_total = time.perf_counter()
+
+        # 0. Infrastructure readiness
+        # This ensures the DB exists even if the server
         # lifespan didn't run.
         from shared_memory.infra.database import init_db
 
+        t_init_start = time.perf_counter()
         await init_db()
         await init_thoughts_db()
+        dur_init = time.perf_counter() - t_init_start
 
         logger.info(
             f"Processing thought #{thought_number}/{total_thoughts} for session: {session_id}"
@@ -129,6 +135,7 @@ async def process_thought_core(
                     }
 
             # 3. Persistence: Insert thought with metadata (filled post-search)
+            t_db_start = time.perf_counter()
             await conn.execute(
                 """
                 INSERT INTO thought_history (
@@ -151,6 +158,7 @@ async def process_thought_core(
                 ),
             )
             await conn.commit()
+            dur_db = time.perf_counter() - t_db_start
 
             # 4. Statistics
             cursor = await conn.execute(
@@ -177,8 +185,10 @@ async def process_thought_core(
         )
 
         # 6.2 Salvage: Synchronously retrieve and rerank related past knowledge
+        t_salvage_start = time.perf_counter()
         history = await get_thought_history(session_id)
         related_knowledge = await salvage_related_knowledge(thought, session_id, history)
+        dur_salvage = time.perf_counter() - t_salvage_start
 
         # 6.3 Traceability: Record search results in metadata
         async with await async_get_thoughts_connection() as conn:
@@ -213,6 +223,12 @@ async def process_thought_core(
                     (session_id,),
                 )
                 await conn.commit()
+
+        total_dur = time.perf_counter() - start_total
+        logger.info(
+            f"PERF [process_thought_core]: session={session_id} "
+            f"total={total_dur:.3f}s (init={dur_init:.3f}s, db_insert={dur_db:.3f}s, salvage={dur_salvage:.3f}s)"
+        )
 
         return {
             "thoughtNumber": thought_number,

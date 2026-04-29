@@ -1,14 +1,15 @@
+import json
 from datetime import datetime
 from typing import Any
 
+from shared_memory.common.utils import get_logger
+from shared_memory.core.thought_logic import init_thoughts_db
 from shared_memory.infra.database import (
     async_get_connection,
     async_get_thoughts_connection,
     init_db,
     retry_on_db_lock,
 )
-from shared_memory.core.thought_logic import init_thoughts_db
-from shared_memory.common.utils import get_logger
 
 logger = get_logger("insights")
 
@@ -79,7 +80,6 @@ class InsightEngine:
             }
 
             if total_hits > 0:
-                import json
 
                 for _r_count, hit_ids_json, avg_sim, s_ts in hit_rows:
                     precision_sum += avg_sim or 0.0

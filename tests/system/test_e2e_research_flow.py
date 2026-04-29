@@ -4,6 +4,7 @@ import pytest
 
 from shared_memory.api import server
 
+
 @pytest.mark.asyncio
 async def test_e2e_researcher_workflow(mock_llm):
     """

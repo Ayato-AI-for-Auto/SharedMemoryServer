@@ -1,11 +1,11 @@
 import json
 from typing import Any
 
-from shared_memory.core.ai_control import AIRateLimiter, retry_on_ai_quota
 from shared_memory.common.config import settings
-from shared_memory.infra.embeddings import get_gemini_client
-from shared_memory.core.search import perform_search
 from shared_memory.common.utils import get_logger, log_error
+from shared_memory.core.ai_control import AIRateLimiter, retry_on_ai_quota
+from shared_memory.core.search import perform_search
+from shared_memory.infra.embeddings import get_gemini_client
 
 logger = get_logger("salvage")
 

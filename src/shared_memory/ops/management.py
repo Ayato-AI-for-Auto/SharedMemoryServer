@@ -5,9 +5,9 @@ import shutil
 
 import numpy as np
 
+from shared_memory.common.utils import calculate_importance, get_db_path, log_error
 from shared_memory.infra.database import async_get_connection
 from shared_memory.infra.embeddings import get_gemini_client
-from shared_memory.common.utils import calculate_importance, get_db_path, log_error
 
 
 async def create_snapshot_logic(name: str, description: str = ""):

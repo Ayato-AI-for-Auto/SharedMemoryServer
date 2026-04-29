@@ -13,9 +13,14 @@ class ModelManager:
     """
 
     def __init__(self):
-        self._lock = asyncio.Lock()
+        self._lock = None
         self.current_index = 0
         self._models = None
+
+    def _get_lock(self):
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def models(self):
@@ -33,7 +38,7 @@ class ModelManager:
         Rotates to the next model.
         Returns True if we have completed a full cycle and are back at the start.
         """
-        async with self._lock:
+        async with self._get_lock():
             self.current_index = (self.current_index + 1) % len(self.models)
             is_full_cycle = self.current_index == 0
             logger.info(
@@ -153,11 +158,13 @@ class AIRateLimiter:
     async def throttle(cls, task_type: str = "generation"):
         interval = cls.GENERATION_INTERVAL if task_type == "generation" else cls.EMBEDDING_INTERVAL
 
-        if task_type not in cls._locks:
-            cls._locks[task_type] = asyncio.Lock()
+        loop = asyncio.get_running_loop()
+        lock_key = (task_type, loop)
+        if lock_key not in cls._locks:
+            cls._locks[lock_key] = asyncio.Lock()
 
-        async with cls._locks[task_type]:
-            now = asyncio.get_event_loop().time()
+        async with cls._locks[lock_key]:
+            now = loop.time()
             last_time = cls._last_call_times.get(task_type, 0.0)
             elapsed = now - last_time
 

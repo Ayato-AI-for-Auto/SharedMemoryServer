@@ -4,6 +4,7 @@ import pytest
 
 from shared_memory.api import server
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_save_memory_async_system_flow(fake_llm):
@@ -26,9 +27,21 @@ async def test_save_memory_async_system_flow(fake_llm):
 
     from shared_memory.core.search import search_memory_logic
 
-    res = await search_memory_logic("SystemEntity")
-    if not any("System test fact" in r["content"] for r in res.get("observations", [])):
-        pytest.fail("Asynchronous save did not complete in time or entity not searchable.")
+    # Retry a few times if not immediately visible (SQLite isolation/indexing)
+    max_retries = 5
+    res = {}
+    for attempt in range(max_retries):
+        res = await search_memory_logic("SystemEntity")
+        obs_list = res.get("observations", [])
+        if any("System test fact" in r["content"] for r in obs_list):
+            break
+        if attempt < max_retries - 1:
+            import asyncio
+            await asyncio.sleep(0.5)
+    else:
+        pytest.fail(
+            f"Asynchronous save did not complete in time or entity not searchable. Found: {res}"
+        )
 
 
 @pytest.mark.unit

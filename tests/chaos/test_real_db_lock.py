@@ -6,6 +6,7 @@ import pytest
 
 from shared_memory.core import logic
 
+
 @pytest.mark.asyncio
 @pytest.mark.chaos
 async def test_real_sqlite_lock_recovery():

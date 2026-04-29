@@ -1,7 +1,8 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-import asyncio
+
 from shared_memory.api import server
-from unittest.mock import patch, MagicMock
 
 
 @pytest.mark.asyncio
@@ -27,6 +28,7 @@ async def test_chaos_failure_resilience():
         # Every even call succeeds (simplistic mock)
         # Note: In real life we'd need a real connection, but we are testing the retry loop
         from aiosqlite import connect
+
         from shared_memory.common.utils import get_db_path
         return await connect(get_db_path())
 
@@ -37,11 +39,14 @@ async def test_chaos_failure_resilience():
         with patch("shared_memory.infra.database.asyncio.sleep", return_value=None):
             # We also need to mock embeddings to not hit quota yet
             with patch("shared_memory.infra.embeddings.compute_embeddings_bulk", return_value=[]):
-                # Using a higher level save_memory_core directly since server.save_memory is fire-and-forget
+                # Using a higher level save_memory_core directly since 
+                # server.save_memory is fire-and-forget
                 from shared_memory.core.logic import save_memory_core
                 
                 # Mocking graph.save_entities to avoid actual DB write on odd attempts
-                with patch("shared_memory.core.graph.save_entities", return_value="Saved 1 entities"):
+                with patch(
+                    "shared_memory.core.graph.save_entities", return_value="Saved 1 entities"
+                ):
                     result = await save_memory_core(entities=[{"name": "ChaosEntity"}])
                     assert "Saved 1 entities" in result
 

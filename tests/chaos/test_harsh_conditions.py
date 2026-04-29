@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 from shared_memory.core import logic
 from tests.unit.fake_client import FakeGeminiClient
+
 
 @pytest.mark.asyncio
 async def test_save_memory_harsh_invalid_inputs():
@@ -14,8 +17,12 @@ async def test_save_memory_harsh_invalid_inputs():
     assert res == ""
 
     # Test with empty strings in list
-    res = await logic.save_memory_core(entities=["", "  "], observations=[{"content": "", "entity_name": ""}])
-    # Empty strings are filtered but might be reported as "skipped" or "errors" depending on implementation.
+    res = await logic.save_memory_core(
+        entities=["", "  "], 
+        observations=[{"content": "", "entity_name": ""}]
+    )
+    # Empty strings are filtered but might be reported as "skipped" or "errors" 
+    # depending on implementation.
     # Based on actual run: 'Saved 0 entities (Errors: 2)'
     assert "Saved 0" in res
 

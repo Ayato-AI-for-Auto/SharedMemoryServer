@@ -49,7 +49,13 @@ async def test_save_pipeline_with_llm_conflict_response(mock_llm):
     """
     await init_db(force=True)
 
-    # LLMがコンフリクトを返すように設定
+    # 1. 既存データの投入（これがないと衝突チェックがスキップされる）
+    await logic.save_memory_core(
+        entities=[{"name": "DuplicateNode", "description": "Existing context"}],
+        observations=[{"entity_name": "DuplicateNode", "content": "Existing fact"}]
+    )
+
+    # 2. LLMがコンフリクトを返すように設定
     mock_llm.models.set_response(
         "generate_content", '{"conflict": true, "reason": "Redundant data"}'
     )

@@ -1,8 +1,8 @@
 import pytest
 
-from shared_memory.ops import lifecycle
 from shared_memory.core import logic, search
 from shared_memory.infra.database import init_db
+from shared_memory.ops import lifecycle
 
 
 @pytest.mark.system

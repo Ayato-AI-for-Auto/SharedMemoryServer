@@ -4,8 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-from shared_memory.core import logic
 from shared_memory.api import server
+from shared_memory.core import logic
+
+
 @pytest.mark.asyncio
 @pytest.mark.chaos
 async def test_corrupt_llm_json_response(mock_llm):

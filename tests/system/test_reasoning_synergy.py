@@ -4,6 +4,7 @@ import pytest
 
 from shared_memory.core import logic, thought_logic
 
+
 @pytest.mark.asyncio
 @pytest.mark.system
 async def test_reasoning_synergy_and_distillation(mock_llm):

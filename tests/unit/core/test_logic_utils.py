@@ -1,9 +1,9 @@
 import pytest
+
 from shared_memory.core.logic import (
+    normalize_bank_files,
     normalize_entities,
     normalize_observations,
-    normalize_bank_files,
-    normalize_observation_item,
 )
 
 
@@ -86,9 +86,9 @@ class TestLogicNormalizationHard:
         # Deeply malformed list
         inputs = [
             {"filename": "a.md", "content": "A"},
-            {"file_with_no_synonym": "B"},  # Pattern B: filename="file_with_no_synonym", content="B"
+            {"file_with_no_synonym": "B"},  # Pattern B: filename="file_with_no_synonym"
             {"filename": "C"},  # Pattern B: but 'filename' is in ignore list -> Skip
-            {"content": "D"},  # Pattern B: but 'content' is in ignore list -> Skip (Actually Pattern A might take it and auto-name)
+            {"content": "D"},  # Pattern A: content="D", filename=None -> auto-names
             # Wait, let's re-examine normalize_bank_files code for Pattern A vs B
         ]
         # In code:
@@ -100,7 +100,8 @@ class TestLogicNormalizationHard:
         assert results["a.md"] == "A"
         assert results["file_with_no_synonym"] == "B"
 
-        # {"content": "D"} -> Pattern A: content="D", filename=None -> auto-names as "derived_knowledge_3.md"
+        # {"content": "D"} -> Pattern A: content="D", filename=None
+        # -> auto-names as "derived_knowledge_3.md"
         assert results["derived_knowledge_3.md"] == "D"
 
     def test_normalize_bank_files_nested_madness(self):

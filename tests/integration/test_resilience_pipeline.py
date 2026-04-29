@@ -1,9 +1,10 @@
-import pytest
-import asyncio
 import sqlite3
-import aiosqlite
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+
+import pytest
+
 from shared_memory.infra.database import retry_on_db_lock
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio

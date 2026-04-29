@@ -1,0 +1,998 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.3, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\saiha\My_Service\programing\MCP\SharedMemoryServer
+configfile: pyproject.toml
+plugins: anyio-4.13.0, langsmith-0.7.33, asyncio-1.3.0, cov-7.1.0, timeout-2.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/unit/common/test_utils.py::test_mask_sensitive_data ERROR          [ 33%]
+tests/unit/common/test_utils.py::test_safe_path_join ERROR               [ 66%]
+tests/unit/common/test_utils.py::test_calculate_importance ERROR         [100%]
+
+=================================== ERRORS ====================================
+_________________ ERROR at setup of test_mask_sensitive_data __________________
+
+fixturedef = <FixtureDef argname='setup_teardown_db' scope='function' baseid='tests'>
+request = <SubRequest 'setup_teardown_db' for <Function test_mask_sensitive_data>>
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(fixturedef: FixtureDef, request) -> object | None:
+        asyncio_mode = _get_asyncio_mode(request.config)
+        if not _is_asyncio_fixture_function(fixturedef.func):
+            if asyncio_mode == Mode.STRICT:
+                # Ignore async fixtures without explicit asyncio mark in strict mode
+                # This applies to pytest_trio fixtures, for example
+                return (yield)
+            if not _is_coroutine_or_asyncgen(fixturedef.func):
+                return (yield)
+        default_loop_scope = request.config.getini("asyncio_default_fixture_loop_scope")
+        loop_scope = (
+            getattr(fixturedef.func, "_loop_scope", None)
+            or default_loop_scope
+            or fixturedef.scope
+        )
+        runner_fixture_id = f"_{loop_scope}_scoped_runner"
+        runner = request.getfixturevalue(runner_fixture_id)
+        synchronizer = _fixture_synchronizer(fixturedef, runner, request)
+        _make_asyncio_fixture_function(synchronizer, loop_scope)
+        with MonkeyPatch.context() as c:
+            c.setattr(fixturedef, "func", synchronizer)
+>           hook_result = yield
+                          ^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:743: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ()
+kwargs = {'request': <SubRequest 'setup_teardown_db' for <Function test_mask_sensitive_data>>}
+setup = <function _wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup at 0x0000016B87947E20>
+
+    @functools.wraps(fixture_function)
+    def _asyncgen_fixture_wrapper(
+        *args: AsyncGenFixtureParams.args,
+        **kwargs: AsyncGenFixtureParams.kwargs,
+    ):
+        gen_obj = fixture_function(*args, **kwargs)
+    
+        async def setup():
+            res = await gen_obj.__anext__()
+            return res
+    
+        context = contextvars.copy_context()
+>       result = runner.run(setup(), context=context)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:313: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asyncio.runners.Runner object at 0x0000016B878C4C90>
+coro = <coroutine object _wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup at 0x0000016B87912DC0>
+
+    def run(self, coro, *, context=None):
+        """Run a coroutine inside the embedded event loop."""
+        if not coroutines.iscoroutine(coro):
+            raise ValueError("a coroutine was expected, got {!r}".format(coro))
+    
+        if events._get_running_loop() is not None:
+            # fail fast with short traceback
+            raise RuntimeError(
+                "Runner.run() cannot be called from a running event loop")
+    
+        self._lazy_init()
+    
+        if context is None:
+            context = self._context
+        task = self._loop.create_task(coro, context=context)
+    
+        if (threading.current_thread() is threading.main_thread()
+            and signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        ):
+            sigint_handler = functools.partial(self._on_sigint, main_task=task)
+            try:
+                signal.signal(signal.SIGINT, sigint_handler)
+            except ValueError:
+                # `signal.signal` may throw if `threading.main_thread` does
+                # not support signals (e.g. embedded interpreter with signals
+                # not registered - see gh-91880)
+                sigint_handler = None
+        else:
+            sigint_handler = None
+    
+        self._interrupt_count = 0
+        try:
+>           return self._loop.run_until_complete(task)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\asyncio\runners.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ProactorEventLoop running=False closed=False debug=False>
+future = <Task finished name='Task-1' coro=<_wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup() done, de...Lib\site-packages\pytest_asyncio\plugin.py:308> exception=AttributeError("'NoneType' object has no attribute 'clear'")>
+
+    def run_until_complete(self, future):
+        """Run until the Future is done.
+    
+        If the argument is a coroutine, it is wrapped in a Task.
+    
+        WARNING: It would be disastrous to call run_until_complete()
+        with the same coroutine twice -- it would wrap it in two
+        different Tasks and that can't be good.
+    
+        Return the Future's result, or raise its exception.
+        """
+        self._check_closed()
+        self._check_running()
+    
+        new_task = not futures.isfuture(future)
+        future = tasks.ensure_future(future, loop=self)
+        if new_task:
+            # An exception is raised if the future didn't complete, so there
+            # is no need to log the "destroy pending task" message
+            future._log_destroy_pending = False
+    
+        future.add_done_callback(_run_until_complete_cb)
+        try:
+            self.run_forever()
+        except:
+            if new_task and future.done() and not future.cancelled():
+                # The coroutine raised a BaseException. Consume the exception
+                # to not log a warning, the caller doesn't have access to the
+                # local task.
+                future.exception()
+            raise
+        finally:
+            future.remove_done_callback(_run_until_complete_cb)
+        if not future.done():
+            raise RuntimeError('Event loop stopped before Future completed.')
+    
+>       return future.result()
+               ^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\asyncio\base_events.py:653: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def setup():
+>       res = await gen_obj.__anext__()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:309: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+request = <SubRequest 'setup_teardown_db' for <Function test_mask_sensitive_data>>
+
+    @pytest.fixture(autouse=True)
+    async def setup_teardown_db(request):
+        from shared_memory.infra.database import close_all_connections, init_db
+        from shared_memory.core.thought_logic import init_thoughts_db
+    
+        # Standard path resolution for testing - Use a more specific prefix
+        home_dir = tempfile.mkdtemp(prefix="sm_test_")
+        os.environ["SHARED_MEMORY_HOME"] = home_dir
+        os.environ["MEMORY_DB_PATH"] = os.path.join(home_dir, "knowledge.db")
+        os.environ["THOUGHTS_DB_PATH"] = os.path.join(home_dir, "thoughts.db")
+        os.environ["MEMORY_BANK_DIR"] = os.path.join(home_dir, "bank")
+    
+        # Initialize databases for each test
+        await init_db(force=True)
+        await init_thoughts_db(force=True)
+    
+        # Reset server initialization state
+        from shared_memory.api import server
+>       server._INITIALIZED_EVENT.clear()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'clear'
+
+tests\conftest.py:29: AttributeError
+---------------------------- Captured stdout setup ----------------------------
+2026-04-30 05:39:24.423 | INFO     | shared_memory.infra.database:close_all_connections:147 - Closing all singleton database connections...
+2026-04-30 05:39:24.423 | INFO     | shared_memory.infra.database:init_db:217 - Initializing main database (force=True)...
+2026-04-30 05:39:24.424 | INFO     | shared_memory.infra.database:__aenter__:101 - Establishing NEW singleton connection to: C:\Users\saiha\AppData\Local\Temp\sm_test_azpl7fqr\knowledge.db
+2026-04-30 05:39:24.429 | INFO     | shared_memory.infra.database:__aenter__:109 - Main connection successfully established and configured.
+2026-04-30 05:39:24.430 | INFO     | shared_memory.infra.database:init_db:227 - DB Integrity Check: PASSED.
+2026-04-30 05:39:24.430 | INFO     | shared_memory.infra.database:init_db:232 - Starting table creation/verification sequence...
+2026-04-30 05:39:24.432 | INFO     | shared_memory.infra.database:init_db:287 - Core tables (entities, relations, observations, bank_files) verified.
+2026-04-30 05:39:24.437 | INFO     | shared_memory.migrations.manager:run_migrations:81 - Backing up database to C:\Users\saiha\AppData\Local\Temp\sm_test_azpl7fqr\knowledge.db.20260430053924.bak before migrations...
+2026-04-30 05:39:24.438 | INFO     | shared_memory.migrations.manager:run_migrations:92 - Applying migration v1: v001_remove_foreign_keys.py
+2026-04-30 05:39:24.439 | INFO     | migration_v1:migrate:13 - Starting Migration v001...
+2026-04-30 05:39:24.439 | INFO     | migration_v1:migrate:20 - Reconstructing 'relations' table...
+2026-04-30 05:39:24.439 | INFO     | migration_v1:migrate:44 - Reconstructing 'observations' table...
+2026-04-30 05:39:24.441 | INFO     | migration_v1:migrate:69 - Migration v001 completed successfully.
+2026-04-30 05:39:24.441 | INFO     | shared_memory.migrations.manager:run_migrations:111 - Successfully applied v1
+2026-04-30 05:39:24.442 | INFO     | shared_memory.migrations.manager:run_migrations:119 - All pending migrations applied successfully.
+2026-04-30 05:39:24.442 | INFO     | shared_memory.infra.database:init_db:410 - Main database initialization successful.
+2026-04-30 05:39:24.442 | INFO     | shared_memory.common.utils:log_info:29 - Initializing thoughts database at C:\Users\saiha\AppData\Local\Temp\sm_test_azpl7fqr\thoughts.db...
+2026-04-30 05:39:24.442 | INFO     | shared_memory.infra.database:__aenter__:92 - Establishing NEW thoughts singleton: C:\Users\saiha\AppData\Local\Temp\sm_test_azpl7fqr\thoughts.db
+2026-04-30 05:39:24.444 | INFO     | shared_memory.infra.database:__aenter__:97 - Thoughts connection PRAGMAs configured (WAL/NORMAL).
+2026-04-30 05:39:24.447 | INFO     | shared_memory.common.utils:log_info:29 - Thoughts database initialization successful.
+2026-04-30 05:39:24 | INFO     | shared_memory.api.server:<module>:85 - --- SERVER SCRIPT STARTING (Extreme Guard Mode) ---
+2026-04-30 05:39:24 | INFO     | shared_memory.api.server:<module>:86 - OS-level stdout (FD 1) has been redirected to stderr (FD 2)
+2026-04-30 05:39:24 | INFO     | shared_memory.api.server:<module>:87 - MCP communication will use an isolated FD.
+2026-04-30 05:39:25 | INFO     | shared_memory.api.server:<module>:94 - Importing core submodules (logic, thought_logic, database)...
+2026-04-30 05:39:25 | INFO     | shared_memory.api.server:<module>:99 - Core submodules imported successfully
+____________________ ERROR at setup of test_safe_path_join ____________________
+
+fixturedef = <FixtureDef argname='setup_teardown_db' scope='function' baseid='tests'>
+request = <SubRequest 'setup_teardown_db' for <Function test_safe_path_join>>
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(fixturedef: FixtureDef, request) -> object | None:
+        asyncio_mode = _get_asyncio_mode(request.config)
+        if not _is_asyncio_fixture_function(fixturedef.func):
+            if asyncio_mode == Mode.STRICT:
+                # Ignore async fixtures without explicit asyncio mark in strict mode
+                # This applies to pytest_trio fixtures, for example
+                return (yield)
+            if not _is_coroutine_or_asyncgen(fixturedef.func):
+                return (yield)
+        default_loop_scope = request.config.getini("asyncio_default_fixture_loop_scope")
+        loop_scope = (
+            getattr(fixturedef.func, "_loop_scope", None)
+            or default_loop_scope
+            or fixturedef.scope
+        )
+        runner_fixture_id = f"_{loop_scope}_scoped_runner"
+        runner = request.getfixturevalue(runner_fixture_id)
+        synchronizer = _fixture_synchronizer(fixturedef, runner, request)
+        _make_asyncio_fixture_function(synchronizer, loop_scope)
+        with MonkeyPatch.context() as c:
+            c.setattr(fixturedef, "func", synchronizer)
+>           hook_result = yield
+                          ^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:743: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ()
+kwargs = {'request': <SubRequest 'setup_teardown_db' for <Function test_safe_path_join>>}
+setup = <function _wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup at 0x0000016B8B0F3E20>
+
+    @functools.wraps(fixture_function)
+    def _asyncgen_fixture_wrapper(
+        *args: AsyncGenFixtureParams.args,
+        **kwargs: AsyncGenFixtureParams.kwargs,
+    ):
+        gen_obj = fixture_function(*args, **kwargs)
+    
+        async def setup():
+            res = await gen_obj.__anext__()
+            return res
+    
+        context = contextvars.copy_context()
+>       result = runner.run(setup(), context=context)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:313: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asyncio.runners.Runner object at 0x0000016B8AFBC450>
+coro = <coroutine object _wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup at 0x0000016B8A97A0C0>
+
+    def run(self, coro, *, context=None):
+        """Run a coroutine inside the embedded event loop."""
+        if not coroutines.iscoroutine(coro):
+            raise ValueError("a coroutine was expected, got {!r}".format(coro))
+    
+        if events._get_running_loop() is not None:
+            # fail fast with short traceback
+            raise RuntimeError(
+                "Runner.run() cannot be called from a running event loop")
+    
+        self._lazy_init()
+    
+        if context is None:
+            context = self._context
+        task = self._loop.create_task(coro, context=context)
+    
+        if (threading.current_thread() is threading.main_thread()
+            and signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        ):
+            sigint_handler = functools.partial(self._on_sigint, main_task=task)
+            try:
+                signal.signal(signal.SIGINT, sigint_handler)
+            except ValueError:
+                # `signal.signal` may throw if `threading.main_thread` does
+                # not support signals (e.g. embedded interpreter with signals
+                # not registered - see gh-91880)
+                sigint_handler = None
+        else:
+            sigint_handler = None
+    
+        self._interrupt_count = 0
+        try:
+>           return self._loop.run_until_complete(task)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\asyncio\runners.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ProactorEventLoop running=False closed=False debug=False>
+future = <Task finished name='Task-5' coro=<_wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup() done, de...Lib\site-packages\pytest_asyncio\plugin.py:308> exception=AttributeError("'NoneType' object has no attribute 'clear'")>
+
+    def run_until_complete(self, future):
+        """Run until the Future is done.
+    
+        If the argument is a coroutine, it is wrapped in a Task.
+    
+        WARNING: It would be disastrous to call run_until_complete()
+        with the same coroutine twice -- it would wrap it in two
+        different Tasks and that can't be good.
+    
+        Return the Future's result, or raise its exception.
+        """
+        self._check_closed()
+        self._check_running()
+    
+        new_task = not futures.isfuture(future)
+        future = tasks.ensure_future(future, loop=self)
+        if new_task:
+            # An exception is raised if the future didn't complete, so there
+            # is no need to log the "destroy pending task" message
+            future._log_destroy_pending = False
+    
+        future.add_done_callback(_run_until_complete_cb)
+        try:
+            self.run_forever()
+        except:
+            if new_task and future.done() and not future.cancelled():
+                # The coroutine raised a BaseException. Consume the exception
+                # to not log a warning, the caller doesn't have access to the
+                # local task.
+                future.exception()
+            raise
+        finally:
+            future.remove_done_callback(_run_until_complete_cb)
+        if not future.done():
+            raise RuntimeError('Event loop stopped before Future completed.')
+    
+>       return future.result()
+               ^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\asyncio\base_events.py:653: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def setup():
+>       res = await gen_obj.__anext__()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:309: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+request = <SubRequest 'setup_teardown_db' for <Function test_safe_path_join>>
+
+    @pytest.fixture(autouse=True)
+    async def setup_teardown_db(request):
+        from shared_memory.infra.database import close_all_connections, init_db
+        from shared_memory.core.thought_logic import init_thoughts_db
+    
+        # Standard path resolution for testing - Use a more specific prefix
+        home_dir = tempfile.mkdtemp(prefix="sm_test_")
+        os.environ["SHARED_MEMORY_HOME"] = home_dir
+        os.environ["MEMORY_DB_PATH"] = os.path.join(home_dir, "knowledge.db")
+        os.environ["THOUGHTS_DB_PATH"] = os.path.join(home_dir, "thoughts.db")
+        os.environ["MEMORY_BANK_DIR"] = os.path.join(home_dir, "bank")
+    
+        # Initialize databases for each test
+        await init_db(force=True)
+        await init_thoughts_db(force=True)
+    
+        # Reset server initialization state
+        from shared_memory.api import server
+>       server._INITIALIZED_EVENT.clear()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'clear'
+
+tests\conftest.py:29: AttributeError
+---------------------------- Captured stdout setup ----------------------------
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:close_all_connections:147 - Closing all singleton database connections...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:close_all_connections:152 - Main connection closed.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:close_all_connections:156 - Thoughts connection closed.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:217 - Initializing main database (force=True)...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:101 - Establishing NEW singleton connection to: C:\Users\saiha\AppData\Local\Temp\sm_test_kx3zjy8o\knowledge.db
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:109 - Main connection successfully established and configured.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:227 - DB Integrity Check: PASSED.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:232 - Starting table creation/verification sequence...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:287 - Core tables (entities, relations, observations, bank_files) verified.
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:81 - Backing up database to C:\Users\saiha\AppData\Local\Temp\sm_test_kx3zjy8o\knowledge.db.20260430053925.bak before migrations...
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:92 - Applying migration v1: v001_remove_foreign_keys.py
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:13 - Starting Migration v001...
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:20 - Reconstructing 'relations' table...
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:44 - Reconstructing 'observations' table...
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:69 - Migration v001 completed successfully.
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:111 - Successfully applied v1
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:119 - All pending migrations applied successfully.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:410 - Main database initialization successful.
+2026-04-30 05:39:25 | INFO     | shared_memory.common.utils:log_info:29 - Initializing thoughts database at C:\Users\saiha\AppData\Local\Temp\sm_test_kx3zjy8o\thoughts.db...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:92 - Establishing NEW thoughts singleton: C:\Users\saiha\AppData\Local\Temp\sm_test_kx3zjy8o\thoughts.db
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:97 - Thoughts connection PRAGMAs configured (WAL/NORMAL).
+2026-04-30 05:39:25 | INFO     | shared_memory.common.utils:log_info:29 - Thoughts database initialization successful.
+----------------------------- Captured log setup ------------------------------
+DEBUG    asyncio:proactor_events.py:633 Using proactor: IocpProactor
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016B8AA28C70>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016B8AA28C70>) completed
+DEBUG    aiosqlite:core.py:62 executing <function Connection.stop.<locals>.close_and_stop at 0x0000016B8AFD1260>
+DEBUG    aiosqlite:core.py:67 operation <function Connection.stop.<locals>.close_and_stop at 0x0000016B8AFD1260> completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016B8AA29120>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016B8AA29120>) completed
+DEBUG    aiosqlite:core.py:62 executing <function Connection.stop.<locals>.close_and_stop at 0x0000016B87947F60>
+DEBUG    aiosqlite:core.py:67 operation <function Connection.stop.<locals>.close_and_stop at 0x0000016B87947F60> completed
+DEBUG    aiosqlite:core.py:62 executing <function connect.<locals>.connector at 0x0000016B8AFD1120>
+DEBUG    aiosqlite:core.py:67 operation <function connect.<locals>.connector at 0x0000016B8AFD1120> completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA foreign_keys = ON', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA foreign_keys = ON', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA journal_mode = WAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA journal_mode = WAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA synchronous = NORMAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA synchronous = NORMAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA cache_size = -2000', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA cache_size = -2000', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'SELECT 1', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'SELECT 1', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA991B010>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA991B010>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS entities (\n                    name TEXT PRIMARY KEY,\n                    entity_type TEXT,\n                    description TEXT,\n                    importance INTEGER DEFAULT 5,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS entities (\n                    name TEXT PRIMARY KEY,\n                    entity_type TEXT,\n                    description TEXT,\n                    importance INTEGER DEFAULT 5,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS relations (\n                    subject TEXT,\n                    object TEXT,\n                    predicate TEXT,\n                    justification TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active',\n                    PRIMARY KEY (subject, object, predicate)\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS relations (\n                    subject TEXT,\n                    object TEXT,\n                    predicate TEXT,\n                    justification TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active',\n                    PRIMARY KEY (subject, object, predicate)\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS observations (\n                    id INTEGER PRIMARY KEY AUTOINCREMENT,\n                    entity_name TEXT,\n                    content TEXT,\n                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS observations (\n                    id INTEGER PRIMARY KEY AUTOINCREMENT,\n                    entity_name TEXT,\n                    content TEXT,\n                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n                CREATE TABLE IF NOT EXISTS embedding_cache (\n                    content_hash TEXT PRIMARY KEY,\n                    vector BLOB,\n                    model_name TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n                )\n            ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n                CREATE TABLE IF NOT EXISTS embedding_cache (\n                    content_hash TEXT PRIMARY KEY,\n                    vector BLOB,\n                    model_name TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n                )\n            ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS bank_files (\n                    filename TEXT PRIMARY KEY,\n                    content TEXT,\n                    last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, "\n                CREATE TABLE IF NOT EXISTS bank_files (\n                    filename TEXT PRIMARY KEY,\n                    content TEXT,\n                    last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS embeddings (\n                content_id TEXT PRIMARY KEY,\n                vector BLOB,\n                model_name TEXT,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS embeddings (\n                content_id TEXT PRIMARY KEY,\n                vector BLOB,\n                model_name TEXT,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS knowledge_metadata (\n                content_id TEXT PRIMARY KEY,\n                access_count INTEGER DEFAULT 0,\n                last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,\n                stability REAL DEFAULT 0.1,\n                importance_score REAL DEFAULT 0.1\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS knowledge_metadata (\n                content_id TEXT PRIMARY KEY,\n                access_count INTEGER DEFAULT 0,\n                last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,\n                stability REAL DEFAULT 0.1,\n                importance_score REAL DEFAULT 0.1\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS audit_logs (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                table_name TEXT,\n                content_id TEXT,\n                action TEXT,\n                old_data TEXT,\n                new_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                agent_id TEXT,\n                meta_data TEXT\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS audit_logs (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                table_name TEXT,\n                content_id TEXT,\n                action TEXT,\n                old_data TEXT,\n                new_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                agent_id TEXT,\n                meta_data TEXT\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS snapshots (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                name TEXT NOT NULL,\n                description TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                file_path TEXT NOT NULL\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS snapshots (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                name TEXT NOT NULL,\n                description TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                file_path TEXT NOT NULL\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS conflicts (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT NOT NULL,\n                existing_content TEXT NOT NULL,\n                new_content TEXT NOT NULL,\n                reason TEXT,\n                agent_id TEXT,\n                detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                resolved INTEGER DEFAULT 0\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS conflicts (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT NOT NULL,\n                existing_content TEXT NOT NULL,\n                new_content TEXT NOT NULL,\n                reason TEXT,\n                agent_id TEXT,\n                detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                resolved INTEGER DEFAULT 0\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS search_stats (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                query TEXT,\n                results_count INTEGER,\n                hit_content_ids TEXT,\n                avg_similarity REAL DEFAULT 0.0,\n                meta_data TEXT\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS search_stats (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                query TEXT,\n                results_count INTEGER,\n                hit_content_ids TEXT,\n                avg_similarity REAL DEFAULT 0.0,\n                meta_data TEXT\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS troubleshooting_knowledge (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                title TEXT NOT NULL,\n                solution TEXT NOT NULL,\n                affected_functions TEXT,\n                env_metadata TEXT,\n                access_count INTEGER DEFAULT 0,\n                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, '\n            CREATE TABLE IF NOT EXISTS troubleshooting_knowledge (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                title TEXT NOT NULL,\n                solution TEXT NOT NULL,\n                affected_functions TEXT,\n                env_metadata TEXT,\n                access_count INTEGER DEFAULT 0,\n                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(audit_logs)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(audit_logs)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(search_stats)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(search_stats)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(relations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(relations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(relations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(relations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(observations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(observations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(bank_files)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(bank_files)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(relations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(relations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(observations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(observations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(bank_files)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(bank_files)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(snapshots)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(snapshots)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(snapshots)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(snapshots)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(knowledge_metadata)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(knowledge_metadata)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'ALTER TABLE knowledge_metadata ADD COLUMN decay_rate REAL DEFAULT 0.01', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'ALTER TABLE knowledge_metadata ADD COLUMN decay_rate REAL DEFAULT 0.01', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(search_stats)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(search_stats)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(search_stats)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB8440>, 'PRAGMA table_info(search_stats)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB8440>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991B010>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991B010>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, '\n            CREATE TABLE IF NOT EXISTS schema_migrations (\n                version INTEGER PRIMARY KEY,\n                name TEXT NOT NULL,\n                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, '\n            CREATE TABLE IF NOT EXISTS schema_migrations (\n                version INTEGER PRIMARY KEY,\n                name TEXT NOT NULL,\n                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991B010>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991B010>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'SELECT version FROM schema_migrations ORDER BY version', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'SELECT version FROM schema_migrations ORDER BY version', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB87C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB87C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA foreign_keys = OFF', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA foreign_keys = OFF', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, "\n            CREATE TABLE IF NOT EXISTS relations_new (\n                subject TEXT,\n                object TEXT,\n                predicate TEXT,\n                justification TEXT,\n                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active',\n                PRIMARY KEY (subject, object, predicate)\n            )\n        ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, "\n            CREATE TABLE IF NOT EXISTS relations_new (\n                subject TEXT,\n                object TEXT,\n                predicate TEXT,\n                justification TEXT,\n                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active',\n                PRIMARY KEY (subject, object, predicate)\n            )\n        ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'INSERT OR IGNORE INTO relations_new SELECT * FROM relations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'INSERT OR IGNORE INTO relations_new SELECT * FROM relations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'DROP TABLE IF EXISTS relations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'DROP TABLE IF EXISTS relations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'ALTER TABLE relations_new RENAME TO relations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'ALTER TABLE relations_new RENAME TO relations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, "\n            CREATE TABLE IF NOT EXISTS observations_new (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT,\n                content TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active'\n            )\n        ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, "\n            CREATE TABLE IF NOT EXISTS observations_new (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT,\n                content TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active'\n            )\n        ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'INSERT OR IGNORE INTO observations_new (id, entity_name, content, timestamp, created_by, status) SELECT id, entity_name, content, timestamp, created_by, status FROM observations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'INSERT OR IGNORE INTO observations_new (id, entity_name, content, timestamp, created_by, status) SELECT id, entity_name, content, timestamp, created_by, status FROM observations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'DROP TABLE IF EXISTS observations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'DROP TABLE IF EXISTS observations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'ALTER TABLE observations_new RENAME TO observations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'ALTER TABLE observations_new RENAME TO observations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA foreign_keys = ON', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'PRAGMA foreign_keys = ON', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'INSERT INTO schema_migrations (version, name) VALUES (?, ?)', (1, 'v001_remove_foreign_keys.py'))
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, 'INSERT INTO schema_migrations (version, name) VALUES (?, ?)', (1, 'v001_remove_foreign_keys.py')) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991B010>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991B010>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, "SELECT name FROM sqlite_master WHERE type='table' AND name='entities'", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991B010>, "SELECT name FROM sqlite_master WHERE type='table' AND name='entities'", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x0000016B8AFB8E40>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x0000016B8AFB8E40>) completed
+DEBUG    aiosqlite:core.py:62 executing <function connect.<locals>.connector at 0x0000016B8AA41580>
+DEBUG    aiosqlite:core.py:67 operation <function connect.<locals>.connector at 0x0000016B8AA41580> completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'PRAGMA journal_mode = WAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'PRAGMA journal_mode = WAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'PRAGMA synchronous = NORMAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'PRAGMA synchronous = NORMAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, '\n            CREATE TABLE IF NOT EXISTS thought_history (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                session_id TEXT NOT NULL,\n                thought_number INTEGER NOT NULL,\n                total_thoughts INTEGER NOT NULL,\n                thought TEXT NOT NULL,\n                next_thought_needed BOOLEAN,\n                is_revision BOOLEAN DEFAULT 0,\n                revises_thought INTEGER,\n                branch_from_thought INTEGER,\n                branch_id TEXT,\n                distilled BOOLEAN DEFAULT 0,\n                meta_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, '\n            CREATE TABLE IF NOT EXISTS thought_history (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                session_id TEXT NOT NULL,\n                thought_number INTEGER NOT NULL,\n                total_thoughts INTEGER NOT NULL,\n                thought TEXT NOT NULL,\n                next_thought_needed BOOLEAN,\n                is_revision BOOLEAN DEFAULT 0,\n                revises_thought INTEGER,\n                branch_from_thought INTEGER,\n                branch_id TEXT,\n                distilled BOOLEAN DEFAULT 0,\n                meta_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA9B0FA60>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA9B0FA60>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB81C0>, 'PRAGMA table_info(thought_history)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB81C0>, 'PRAGMA table_info(thought_history)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB81C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB81C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB81C0>, 'PRAGMA table_info(thought_history)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016B8AFB81C0>, 'PRAGMA table_info(thought_history)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB81C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016B8AFB81C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'CREATE INDEX IF NOT EXISTS idx_thought_session ON thought_history (session_id)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'CREATE INDEX IF NOT EXISTS idx_thought_session ON thought_history (session_id)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'CREATE INDEX IF NOT EXISTS idx_thought_number ON thought_history (session_id, thought_number)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'CREATE INDEX IF NOT EXISTS idx_thought_number ON thought_history (session_id, thought_number)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'CREATE INDEX IF NOT EXISTS idx_thought_timestamp ON thought_history (timestamp)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0FA60>, 'CREATE INDEX IF NOT EXISTS idx_thought_timestamp ON thought_history (timestamp)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0FA60>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0FA60>) completed
+_________________ ERROR at setup of test_calculate_importance _________________
+
+fixturedef = <FixtureDef argname='setup_teardown_db' scope='function' baseid='tests'>
+request = <SubRequest 'setup_teardown_db' for <Function test_calculate_importance>>
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(fixturedef: FixtureDef, request) -> object | None:
+        asyncio_mode = _get_asyncio_mode(request.config)
+        if not _is_asyncio_fixture_function(fixturedef.func):
+            if asyncio_mode == Mode.STRICT:
+                # Ignore async fixtures without explicit asyncio mark in strict mode
+                # This applies to pytest_trio fixtures, for example
+                return (yield)
+            if not _is_coroutine_or_asyncgen(fixturedef.func):
+                return (yield)
+        default_loop_scope = request.config.getini("asyncio_default_fixture_loop_scope")
+        loop_scope = (
+            getattr(fixturedef.func, "_loop_scope", None)
+            or default_loop_scope
+            or fixturedef.scope
+        )
+        runner_fixture_id = f"_{loop_scope}_scoped_runner"
+        runner = request.getfixturevalue(runner_fixture_id)
+        synchronizer = _fixture_synchronizer(fixturedef, runner, request)
+        _make_asyncio_fixture_function(synchronizer, loop_scope)
+        with MonkeyPatch.context() as c:
+            c.setattr(fixturedef, "func", synchronizer)
+>           hook_result = yield
+                          ^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:743: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ()
+kwargs = {'request': <SubRequest 'setup_teardown_db' for <Function test_calculate_importance>>}
+setup = <function _wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup at 0x0000016B8AFD0A40>
+
+    @functools.wraps(fixture_function)
+    def _asyncgen_fixture_wrapper(
+        *args: AsyncGenFixtureParams.args,
+        **kwargs: AsyncGenFixtureParams.kwargs,
+    ):
+        gen_obj = fixture_function(*args, **kwargs)
+    
+        async def setup():
+            res = await gen_obj.__anext__()
+            return res
+    
+        context = contextvars.copy_context()
+>       result = runner.run(setup(), context=context)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:313: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asyncio.runners.Runner object at 0x0000016BA9A0C1D0>
+coro = <coroutine object _wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup at 0x0000016B8AA00790>
+
+    def run(self, coro, *, context=None):
+        """Run a coroutine inside the embedded event loop."""
+        if not coroutines.iscoroutine(coro):
+            raise ValueError("a coroutine was expected, got {!r}".format(coro))
+    
+        if events._get_running_loop() is not None:
+            # fail fast with short traceback
+            raise RuntimeError(
+                "Runner.run() cannot be called from a running event loop")
+    
+        self._lazy_init()
+    
+        if context is None:
+            context = self._context
+        task = self._loop.create_task(coro, context=context)
+    
+        if (threading.current_thread() is threading.main_thread()
+            and signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        ):
+            sigint_handler = functools.partial(self._on_sigint, main_task=task)
+            try:
+                signal.signal(signal.SIGINT, sigint_handler)
+            except ValueError:
+                # `signal.signal` may throw if `threading.main_thread` does
+                # not support signals (e.g. embedded interpreter with signals
+                # not registered - see gh-91880)
+                sigint_handler = None
+        else:
+            sigint_handler = None
+    
+        self._interrupt_count = 0
+        try:
+>           return self._loop.run_until_complete(task)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\asyncio\runners.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ProactorEventLoop running=False closed=False debug=False>
+future = <Task finished name='Task-9' coro=<_wrap_asyncgen_fixture.<locals>._asyncgen_fixture_wrapper.<locals>.setup() done, de...Lib\site-packages\pytest_asyncio\plugin.py:308> exception=AttributeError("'NoneType' object has no attribute 'clear'")>
+
+    def run_until_complete(self, future):
+        """Run until the Future is done.
+    
+        If the argument is a coroutine, it is wrapped in a Task.
+    
+        WARNING: It would be disastrous to call run_until_complete()
+        with the same coroutine twice -- it would wrap it in two
+        different Tasks and that can't be good.
+    
+        Return the Future's result, or raise its exception.
+        """
+        self._check_closed()
+        self._check_running()
+    
+        new_task = not futures.isfuture(future)
+        future = tasks.ensure_future(future, loop=self)
+        if new_task:
+            # An exception is raised if the future didn't complete, so there
+            # is no need to log the "destroy pending task" message
+            future._log_destroy_pending = False
+    
+        future.add_done_callback(_run_until_complete_cb)
+        try:
+            self.run_forever()
+        except:
+            if new_task and future.done() and not future.cancelled():
+                # The coroutine raised a BaseException. Consume the exception
+                # to not log a warning, the caller doesn't have access to the
+                # local task.
+                future.exception()
+            raise
+        finally:
+            future.remove_done_callback(_run_until_complete_cb)
+        if not future.done():
+            raise RuntimeError('Event loop stopped before Future completed.')
+    
+>       return future.result()
+               ^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Roaming\uv\python\cpython-3.11.3-windows-x86_64-none\Lib\asyncio\base_events.py:653: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def setup():
+>       res = await gen_obj.__anext__()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:309: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+request = <SubRequest 'setup_teardown_db' for <Function test_calculate_importance>>
+
+    @pytest.fixture(autouse=True)
+    async def setup_teardown_db(request):
+        from shared_memory.infra.database import close_all_connections, init_db
+        from shared_memory.core.thought_logic import init_thoughts_db
+    
+        # Standard path resolution for testing - Use a more specific prefix
+        home_dir = tempfile.mkdtemp(prefix="sm_test_")
+        os.environ["SHARED_MEMORY_HOME"] = home_dir
+        os.environ["MEMORY_DB_PATH"] = os.path.join(home_dir, "knowledge.db")
+        os.environ["THOUGHTS_DB_PATH"] = os.path.join(home_dir, "thoughts.db")
+        os.environ["MEMORY_BANK_DIR"] = os.path.join(home_dir, "bank")
+    
+        # Initialize databases for each test
+        await init_db(force=True)
+        await init_thoughts_db(force=True)
+    
+        # Reset server initialization state
+        from shared_memory.api import server
+>       server._INITIALIZED_EVENT.clear()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'clear'
+
+tests\conftest.py:29: AttributeError
+---------------------------- Captured stdout setup ----------------------------
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:close_all_connections:147 - Closing all singleton database connections...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:close_all_connections:152 - Main connection closed.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:close_all_connections:156 - Thoughts connection closed.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:217 - Initializing main database (force=True)...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:101 - Establishing NEW singleton connection to: C:\Users\saiha\AppData\Local\Temp\sm_test_1geif0ni\knowledge.db
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:109 - Main connection successfully established and configured.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:227 - DB Integrity Check: PASSED.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:232 - Starting table creation/verification sequence...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:287 - Core tables (entities, relations, observations, bank_files) verified.
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:81 - Backing up database to C:\Users\saiha\AppData\Local\Temp\sm_test_1geif0ni\knowledge.db.20260430053925.bak before migrations...
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:92 - Applying migration v1: v001_remove_foreign_keys.py
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:13 - Starting Migration v001...
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:20 - Reconstructing 'relations' table...
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:44 - Reconstructing 'observations' table...
+2026-04-30 05:39:25 | INFO     | migration_v1:migrate:69 - Migration v001 completed successfully.
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:111 - Successfully applied v1
+2026-04-30 05:39:25 | INFO     | shared_memory.migrations.manager:run_migrations:119 - All pending migrations applied successfully.
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:init_db:410 - Main database initialization successful.
+2026-04-30 05:39:25 | INFO     | shared_memory.common.utils:log_info:29 - Initializing thoughts database at C:\Users\saiha\AppData\Local\Temp\sm_test_1geif0ni\thoughts.db...
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:92 - Establishing NEW thoughts singleton: C:\Users\saiha\AppData\Local\Temp\sm_test_1geif0ni\thoughts.db
+2026-04-30 05:39:25 | INFO     | shared_memory.infra.database:__aenter__:97 - Thoughts connection PRAGMAs configured (WAL/NORMAL).
+2026-04-30 05:39:25 | INFO     | shared_memory.common.utils:log_info:29 - Thoughts database initialization successful.
+----------------------------- Captured log setup ------------------------------
+DEBUG    asyncio:proactor_events.py:633 Using proactor: IocpProactor
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016BA991B010>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016BA991B010>) completed
+DEBUG    aiosqlite:core.py:62 executing <function Connection.stop.<locals>.close_and_stop at 0x0000016B8AFD0680>
+DEBUG    aiosqlite:core.py:67 operation <function Connection.stop.<locals>.close_and_stop at 0x0000016B8AFD0680> completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016BA9B0FA60>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method close of sqlite3.Connection object at 0x0000016BA9B0FA60>) completed
+DEBUG    aiosqlite:core.py:62 executing <function Connection.stop.<locals>.close_and_stop at 0x0000016B8AFD0720>
+DEBUG    aiosqlite:core.py:67 operation <function Connection.stop.<locals>.close_and_stop at 0x0000016B8AFD0720> completed
+DEBUG    aiosqlite:core.py:62 executing <function connect.<locals>.connector at 0x0000016B8AFD0860>
+DEBUG    aiosqlite:core.py:67 operation <function connect.<locals>.connector at 0x0000016B8AFD0860> completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA foreign_keys = ON', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA foreign_keys = ON', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA journal_mode = WAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA journal_mode = WAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA synchronous = NORMAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA synchronous = NORMAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA cache_size = -2000', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA cache_size = -2000', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'SELECT 1', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'SELECT 1', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA9B0C4F0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA9B0C4F0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS entities (\n                    name TEXT PRIMARY KEY,\n                    entity_type TEXT,\n                    description TEXT,\n                    importance INTEGER DEFAULT 5,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS entities (\n                    name TEXT PRIMARY KEY,\n                    entity_type TEXT,\n                    description TEXT,\n                    importance INTEGER DEFAULT 5,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS relations (\n                    subject TEXT,\n                    object TEXT,\n                    predicate TEXT,\n                    justification TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active',\n                    PRIMARY KEY (subject, object, predicate)\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS relations (\n                    subject TEXT,\n                    object TEXT,\n                    predicate TEXT,\n                    justification TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active',\n                    PRIMARY KEY (subject, object, predicate)\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS observations (\n                    id INTEGER PRIMARY KEY AUTOINCREMENT,\n                    entity_name TEXT,\n                    content TEXT,\n                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS observations (\n                    id INTEGER PRIMARY KEY AUTOINCREMENT,\n                    entity_name TEXT,\n                    content TEXT,\n                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    created_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n                CREATE TABLE IF NOT EXISTS embedding_cache (\n                    content_hash TEXT PRIMARY KEY,\n                    vector BLOB,\n                    model_name TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n                )\n            ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n                CREATE TABLE IF NOT EXISTS embedding_cache (\n                    content_hash TEXT PRIMARY KEY,\n                    vector BLOB,\n                    model_name TEXT,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n                )\n            ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS bank_files (\n                    filename TEXT PRIMARY KEY,\n                    content TEXT,\n                    last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, "\n                CREATE TABLE IF NOT EXISTS bank_files (\n                    filename TEXT PRIMARY KEY,\n                    content TEXT,\n                    last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,\n                    updated_by TEXT,\n                    status TEXT DEFAULT 'active'\n                )\n            ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS embeddings (\n                content_id TEXT PRIMARY KEY,\n                vector BLOB,\n                model_name TEXT,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS embeddings (\n                content_id TEXT PRIMARY KEY,\n                vector BLOB,\n                model_name TEXT,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS knowledge_metadata (\n                content_id TEXT PRIMARY KEY,\n                access_count INTEGER DEFAULT 0,\n                last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,\n                stability REAL DEFAULT 0.1,\n                importance_score REAL DEFAULT 0.1\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS knowledge_metadata (\n                content_id TEXT PRIMARY KEY,\n                access_count INTEGER DEFAULT 0,\n                last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,\n                stability REAL DEFAULT 0.1,\n                importance_score REAL DEFAULT 0.1\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS audit_logs (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                table_name TEXT,\n                content_id TEXT,\n                action TEXT,\n                old_data TEXT,\n                new_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                agent_id TEXT,\n                meta_data TEXT\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS audit_logs (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                table_name TEXT,\n                content_id TEXT,\n                action TEXT,\n                old_data TEXT,\n                new_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                agent_id TEXT,\n                meta_data TEXT\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS snapshots (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                name TEXT NOT NULL,\n                description TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                file_path TEXT NOT NULL\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS snapshots (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                name TEXT NOT NULL,\n                description TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                file_path TEXT NOT NULL\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS conflicts (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT NOT NULL,\n                existing_content TEXT NOT NULL,\n                new_content TEXT NOT NULL,\n                reason TEXT,\n                agent_id TEXT,\n                detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                resolved INTEGER DEFAULT 0\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS conflicts (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT NOT NULL,\n                existing_content TEXT NOT NULL,\n                new_content TEXT NOT NULL,\n                reason TEXT,\n                agent_id TEXT,\n                detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                resolved INTEGER DEFAULT 0\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS search_stats (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                query TEXT,\n                results_count INTEGER,\n                hit_content_ids TEXT,\n                avg_similarity REAL DEFAULT 0.0,\n                meta_data TEXT\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS search_stats (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                query TEXT,\n                results_count INTEGER,\n                hit_content_ids TEXT,\n                avg_similarity REAL DEFAULT 0.0,\n                meta_data TEXT\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS troubleshooting_knowledge (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                title TEXT NOT NULL,\n                solution TEXT NOT NULL,\n                affected_functions TEXT,\n                env_metadata TEXT,\n                access_count INTEGER DEFAULT 0,\n                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, '\n            CREATE TABLE IF NOT EXISTS troubleshooting_knowledge (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                title TEXT NOT NULL,\n                solution TEXT NOT NULL,\n                affected_functions TEXT,\n                env_metadata TEXT,\n                access_count INTEGER DEFAULT 0,\n                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(audit_logs)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(audit_logs)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(search_stats)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(search_stats)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(relations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(relations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(relations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(relations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(observations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(observations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(bank_files)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(bank_files)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(entities)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(relations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(relations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(observations)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(observations)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(bank_files)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(bank_files)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(snapshots)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(snapshots)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(snapshots)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(snapshots)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(knowledge_metadata)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(knowledge_metadata)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'ALTER TABLE knowledge_metadata ADD COLUMN decay_rate REAL DEFAULT 0.01', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'ALTER TABLE knowledge_metadata ADD COLUMN decay_rate REAL DEFAULT 0.01', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(search_stats)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(search_stats)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(search_stats)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA993F9C0>, 'PRAGMA table_info(search_stats)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA993F9C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0C4F0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0C4F0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, '\n            CREATE TABLE IF NOT EXISTS schema_migrations (\n                version INTEGER PRIMARY KEY,\n                name TEXT NOT NULL,\n                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, '\n            CREATE TABLE IF NOT EXISTS schema_migrations (\n                version INTEGER PRIMARY KEY,\n                name TEXT NOT NULL,\n                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0C4F0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0C4F0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'SELECT version FROM schema_migrations ORDER BY version', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'SELECT version FROM schema_migrations ORDER BY version', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA97D7940>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA97D7940>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA foreign_keys = OFF', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA foreign_keys = OFF', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, "\n            CREATE TABLE IF NOT EXISTS relations_new (\n                subject TEXT,\n                object TEXT,\n                predicate TEXT,\n                justification TEXT,\n                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active',\n                PRIMARY KEY (subject, object, predicate)\n            )\n        ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, "\n            CREATE TABLE IF NOT EXISTS relations_new (\n                subject TEXT,\n                object TEXT,\n                predicate TEXT,\n                justification TEXT,\n                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active',\n                PRIMARY KEY (subject, object, predicate)\n            )\n        ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'INSERT OR IGNORE INTO relations_new SELECT * FROM relations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'INSERT OR IGNORE INTO relations_new SELECT * FROM relations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'DROP TABLE IF EXISTS relations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'DROP TABLE IF EXISTS relations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'ALTER TABLE relations_new RENAME TO relations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'ALTER TABLE relations_new RENAME TO relations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, "\n            CREATE TABLE IF NOT EXISTS observations_new (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT,\n                content TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active'\n            )\n        ", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, "\n            CREATE TABLE IF NOT EXISTS observations_new (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                entity_name TEXT,\n                content TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,\n                created_by TEXT,\n                status TEXT DEFAULT 'active'\n            )\n        ", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'INSERT OR IGNORE INTO observations_new (id, entity_name, content, timestamp, created_by, status) SELECT id, entity_name, content, timestamp, created_by, status FROM observations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'INSERT OR IGNORE INTO observations_new (id, entity_name, content, timestamp, created_by, status) SELECT id, entity_name, content, timestamp, created_by, status FROM observations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'DROP TABLE IF EXISTS observations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'DROP TABLE IF EXISTS observations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'ALTER TABLE observations_new RENAME TO observations', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'ALTER TABLE observations_new RENAME TO observations', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA foreign_keys = ON', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'PRAGMA foreign_keys = ON', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'INSERT INTO schema_migrations (version, name) VALUES (?, ?)', (1, 'v001_remove_foreign_keys.py'))
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, 'INSERT INTO schema_migrations (version, name) VALUES (?, ?)', (1, 'v001_remove_foreign_keys.py')) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0C4F0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA9B0C4F0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, "SELECT name FROM sqlite_master WHERE type='table' AND name='entities'", [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA9B0C4F0>, "SELECT name FROM sqlite_master WHERE type='table' AND name='entities'", []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x0000016BA993FEC0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchone of sqlite3.Cursor object at 0x0000016BA993FEC0>) completed
+DEBUG    aiosqlite:core.py:62 executing <function connect.<locals>.connector at 0x0000016B8AFD0180>
+DEBUG    aiosqlite:core.py:67 operation <function connect.<locals>.connector at 0x0000016B8AFD0180> completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'PRAGMA journal_mode = WAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'PRAGMA journal_mode = WAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'PRAGMA synchronous = NORMAL', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'PRAGMA synchronous = NORMAL', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, '\n            CREATE TABLE IF NOT EXISTS thought_history (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                session_id TEXT NOT NULL,\n                thought_number INTEGER NOT NULL,\n                total_thoughts INTEGER NOT NULL,\n                thought TEXT NOT NULL,\n                next_thought_needed BOOLEAN,\n                is_revision BOOLEAN DEFAULT 0,\n                revises_thought INTEGER,\n                branch_from_thought INTEGER,\n                branch_id TEXT,\n                distilled BOOLEAN DEFAULT 0,\n                meta_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, '\n            CREATE TABLE IF NOT EXISTS thought_history (\n                id INTEGER PRIMARY KEY AUTOINCREMENT,\n                session_id TEXT NOT NULL,\n                thought_number INTEGER NOT NULL,\n                total_thoughts INTEGER NOT NULL,\n                thought TEXT NOT NULL,\n                next_thought_needed BOOLEAN,\n                is_revision BOOLEAN DEFAULT 0,\n                revises_thought INTEGER,\n                branch_from_thought INTEGER,\n                branch_id TEXT,\n                distilled BOOLEAN DEFAULT 0,\n                meta_data TEXT,\n                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP\n            )\n        ', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA991BB50>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method cursor of sqlite3.Connection object at 0x0000016BA991BB50>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA9A006C0>, 'PRAGMA table_info(thought_history)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA9A006C0>, 'PRAGMA table_info(thought_history)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA9A006C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA9A006C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA9A006C0>, 'PRAGMA table_info(thought_history)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Cursor object at 0x0000016BA9A006C0>, 'PRAGMA table_info(thought_history)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA9A006C0>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method fetchall of sqlite3.Cursor object at 0x0000016BA9A006C0>) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'CREATE INDEX IF NOT EXISTS idx_thought_session ON thought_history (session_id)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'CREATE INDEX IF NOT EXISTS idx_thought_session ON thought_history (session_id)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'CREATE INDEX IF NOT EXISTS idx_thought_number ON thought_history (session_id, thought_number)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'CREATE INDEX IF NOT EXISTS idx_thought_number ON thought_history (session_id, thought_number)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'CREATE INDEX IF NOT EXISTS idx_thought_timestamp ON thought_history (timestamp)', [])
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method execute of sqlite3.Connection object at 0x0000016BA991BB50>, 'CREATE INDEX IF NOT EXISTS idx_thought_timestamp ON thought_history (timestamp)', []) completed
+DEBUG    aiosqlite:core.py:62 executing functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991BB50>)
+DEBUG    aiosqlite:core.py:67 operation functools.partial(<built-in method commit of sqlite3.Connection object at 0x0000016BA991BB50>) completed
+=========================== short test summary info ===========================
+ERROR tests/unit/common/test_utils.py::test_mask_sensitive_data - AttributeEr...
+ERROR tests/unit/common/test_utils.py::test_safe_path_join - AttributeError: ...
+ERROR tests/unit/common/test_utils.py::test_calculate_importance - AttributeE...
+============================== 3 errors in 2.34s ==============================

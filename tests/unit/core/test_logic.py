@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
+
 from shared_memory.core import logic
 from tests.unit.fake_client import FakeGeminiClient
-from unittest.mock import patch
+
 
 @pytest.fixture
 def fake_client():

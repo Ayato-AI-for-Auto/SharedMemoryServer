@@ -6,8 +6,8 @@ from typing import Any
 
 import aiosqlite
 
-from shared_memory.infra.database import async_get_connection
 from shared_memory.common.utils import get_bank_dir, get_db_path, log_error
+from shared_memory.infra.database import async_get_connection
 
 
 async def check_db_health() -> dict[str, Any]:

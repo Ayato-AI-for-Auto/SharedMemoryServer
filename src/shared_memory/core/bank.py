@@ -4,8 +4,6 @@ import os
 import aiofiles
 
 from shared_memory.common.config import settings
-from shared_memory.infra.database import async_get_connection, update_access
-from shared_memory.infra.embeddings import compute_embeddings_bulk
 from shared_memory.common.utils import (
     GlobalLock,
     get_bank_dir,
@@ -14,6 +12,8 @@ from shared_memory.common.utils import (
     mask_sensitive_data,
     safe_path_join,
 )
+from shared_memory.infra.database import async_get_connection, update_access
+from shared_memory.infra.embeddings import compute_embeddings_bulk
 
 logger = get_logger("bank")
 

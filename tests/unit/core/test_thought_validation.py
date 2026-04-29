@@ -1,7 +1,8 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-import asyncio
-from unittest.mock import patch, AsyncMock
-from shared_memory.core.thought_logic import process_thought_core, init_thoughts_db
+
+from shared_memory.core.thought_logic import process_thought_core
 
 
 @pytest.mark.unit
@@ -88,7 +89,9 @@ class TestThoughtValidation:
         """Tests that final distillation is triggered when next_thought_needed=False."""
         session_id = "test_distill_trigger"
 
-        with patch("shared_memory.core.distiller.auto_distill_knowledge", new_callable=AsyncMock) as mock_distill:
+        with patch(
+            "shared_memory.core.distiller.auto_distill_knowledge", new_callable=AsyncMock
+        ) as mock_distill:
             await process_thought_core(
                 thought="Final thought",
                 thought_number=1,
