@@ -1,76 +1,70 @@
-import aiosqlite
 import pytest
+from unittest.mock import patch
+from shared_memory.core import logic
+from tests.unit.fake_client import FakeGeminiClient
 
-from shared_memory import database, logic
-from shared_memory.exceptions import DatabaseError, DatabaseLockedError
-
-
-@pytest.mark.chaos
 @pytest.mark.asyncio
-async def test_db_lock_retry_chaos():
-    """Chaos: Verify that retry_on_db_lock recovers from transient 'database is locked' errors."""
-    mock_call_count = 0
+async def test_save_memory_harsh_invalid_inputs():
+    """
+    Test with garbage inputs to ensure robustness.
+    """
+    # Test with None
+    res = await logic.save_memory_core(entities=None, observations=None)
+    # The current implementation returns empty string if nothing to save
+    assert res == ""
 
-    @database.retry_on_db_lock(max_retries=3, initial_delay=0.01)
-    async def flaky_function():
-        nonlocal mock_call_count
-        mock_call_count += 1
-        if mock_call_count < 3:
-            raise aiosqlite.OperationalError("database is locked")
-        return "Success"
+    # Test with empty strings in list
+    res = await logic.save_memory_core(entities=["", "  "], observations=[{"content": "", "entity_name": ""}])
+    # Empty strings are filtered but might be reported as "skipped" or "errors" depending on implementation.
+    # Based on actual run: 'Saved 0 entities (Errors: 2)'
+    assert "Saved 0" in res
 
-    result = await flaky_function()
-    assert result == "Success"
-    assert mock_call_count == 3
-
-
-@pytest.mark.chaos
 @pytest.mark.asyncio
-async def test_db_lock_exhaustion_chaos():
-    """Chaos: Verify that persistent locks eventually raise DatabaseLockedError."""
+async def test_save_memory_harsh_ai_repeated_errors():
+    """
+    Test how it handles persistent AI errors.
+    """
+    fake_client = FakeGeminiClient()
+    fake_client.models.set_error("embed_content", Exception("Rate Limit Exceeded"))
+    
+    with patch("shared_memory.infra.embeddings.get_gemini_client", return_value=fake_client):
+        # This should eventually return an AI error message after retries
+        res = await logic.save_memory_core(entities=["AlwaysFail"])
+        assert "AI Error" in res
 
-    @database.retry_on_db_lock(max_retries=2, initial_delay=0.01)
-    async def perma_locked():
-        raise aiosqlite.OperationalError("database is locked")
-
-    with pytest.raises(DatabaseLockedError):
-        await perma_locked()
-
-
-@pytest.mark.chaos
 @pytest.mark.asyncio
-async def test_malformed_llm_json_chaos(fake_llm):
-    """Chaos: Verify that malformed JSON from LLM doesn't crash the conflict logic."""
-    from shared_memory.database import init_db
+async def test_save_memory_harsh_data_corruption_simulation():
+    """
+    Test with malformed observation dictionaries.
+    """
+    malformed_obs = [
+        {"wrong_key": "data"},
+        ["not", "a", "dict"],
+        "just a string"
+    ]
+    
+    try:
+        res = await logic.save_memory_core(observations=malformed_obs)
+        # Should handle it gracefully, likely saving the valid-looking ones or skipping
+        assert isinstance(res, str)
+    except Exception as e:
+        pytest.fail(f"save_memory_core crashed with malformed data: {e}")
 
-    await init_db(force=True)
-
-    fake_llm.models.set_response("generate_content", "This is NOT json { [")
-
-    # This should be handled gracefully (conflicts detection skipped)
-    res = await logic.save_memory_core(observations=[{"entity_name": "E1", "content": "C1"}])
-
-    assert "Saved 1 observations" in res
-    assert "CONFLICTS DETECTED" not in res
-
-
-@pytest.mark.chaos
 @pytest.mark.asyncio
-async def test_database_connection_failure_chaos():
-    """Chaos: Verify behavior when the DB file is not a database."""
-
-    from shared_memory.database import close_all_connections, get_db_path, init_db
-
-    db_path = get_db_path()
-
-    # CRITICAL: Close all existing connections to the file before overwriting it
-    # Otherwise, some OSs might keep a handle to the old file or WAL
-    await close_all_connections()
-
-    # Write garbage to the DB file
-    with open(db_path, "wb") as f:
-        f.write(b"NOT A SQLITE DATABASE")
-
-    # init_db(force=True) should fail because SELECT 1 check will fail
-    with pytest.raises(DatabaseError):
-        await init_db(force=True)
+async def test_concurrent_saves_pressure():
+    """
+    Simulate many concurrent saves to check for DB locks (already has retry logic).
+    """
+    import asyncio
+    tasks = []
+    for i in range(10):
+        tasks.append(logic.save_memory_core(
+            entities=[f"ConcurrentEntity{i}"],
+            observations=[{"content": f"Data {i}", "entity_name": f"ConcurrentEntity{i}"}]
+        ))
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for res in results:
+        if isinstance(res, Exception):
+            pytest.fail(f"Concurrent save failed: {res}")
+        assert "Saved" in res

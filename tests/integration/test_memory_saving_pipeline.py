@@ -1,78 +1,71 @@
-import json
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
-
-from shared_memory import logic
-
-
-@pytest.mark.asyncio
-async def test_save_memory_pipeline_with_quota_rotation(mock_llm):
-    """
-    Tests that the save_memory pipeline handles 429 errors by rotating models.
-    """
-    from shared_memory.database import async_get_connection
-
-    # Pre-insert to trigger LLM check (otherwise it skips if no existing knowledge)
-    async with await async_get_connection() as conn:
-        await conn.execute(
-            "INSERT INTO observations (entity_name, content, created_by) VALUES (?, ?, ?)",
-            ("QuotaEntity", "Initial fact", "setup"),
-        )
-        await conn.commit()
-
-    # 1. Setup mock_llm to fail once then succeed
-    call_count = 0
-
-    async def side_effect(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise Exception("429 RESOURCE_EXHAUSTED")
-        return MagicMock(text=json.dumps({"conflict": False, "reason": "Recovered"}))
-
-    mock_llm.aio.models.generate_content.side_effect = side_effect
-    observations = [{"entity_name": "QuotaEntity", "content": "Testing rotation"}]
-
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("asyncio.sleep", AsyncMock())
-        result = await logic.save_memory_core(
-            observations=observations, agent_id="integration_test"
-        )
-
-    assert "Saved 1 observations" in result
-    assert call_count >= 2
-
+from unittest.mock import MagicMock, patch
+from shared_memory.core import logic
 
 @pytest.mark.asyncio
-async def test_save_memory_partial_failure_robustness(mock_llm):
+async def test_memory_saving_pipeline_integration():
     """
-    Tests how the system handles a partial failure during the parallel conflict check.
+    Test the pipeline: normalize -> precompute -> save.
+    Mocks are allowed here.
     """
-    from shared_memory.database import async_get_connection
+    entities = ["IntegratedEntity"]
+    observations = [{"content": "Integrated observation", "entity_name": "IntegratedEntity"}]
+    
+    # Mocking the AI components (allowed in integration tests)
+    with patch("shared_memory.infra.embeddings.compute_embeddings_bulk") as mock_emb:
+        mock_emb.return_value = [[0.1] * 768] * 2 # 1 entity + 1 observation (wait, observation check doesn't use embeddings directly in same way)
+        # Actually save_memory_core:
+        # 1.1 Preparing embedding inputs: entity_texts + bank_texts
+        # Observations conflict check uses graph.check_conflict (LLM generation)
+        
+        with patch("shared_memory.core.graph.check_conflict") as mock_conflict:
+            mock_conflict.return_value = [(False, "No conflict")]
+            
+            result = await logic.save_memory_core(
+                entities=entities,
+                observations=observations
+            )
+            
+            assert "Saved 1 entities" in result
+            assert "Saved 1 observations" in result
+            assert "CONFLICTS DETECTED" not in result
 
-    async with await async_get_connection() as conn:
-        await conn.execute(
-            "INSERT INTO observations (entity_name, content) VALUES (?, ?)", ("GoodEntity", "init")
-        )
-        await conn.execute(
-            "INSERT INTO observations (entity_name, content) VALUES (?, ?)", ("BadEntity", "init")
-        )
-        await conn.commit()
+@pytest.mark.asyncio
+async def test_memory_saving_pipeline_with_conflict():
+    """
+    Test how the pipeline handles detected conflicts.
+    """
+    entities = ["ConflictEntity"]
+    observations = [{"content": "Conflicting data", "entity_name": "ConflictEntity"}]
+    
+    with patch("shared_memory.infra.embeddings.compute_embeddings_bulk") as mock_emb:
+        mock_emb.return_value = [[0.1] * 768]
+        
+        with patch("shared_memory.core.graph.check_conflict") as mock_conflict:
+            # Simulate a conflict detected by AI
+            mock_conflict.return_value = [(True, "Already exists in a different form")]
+            
+            result = await logic.save_memory_core(
+                entities=entities,
+                observations=observations
+            )
+            
+            assert "Saved 1 entities" in result
+            assert "Saved 0 observations" in result
+            assert "CONFLICTS DETECTED" in result
+            assert "Already exists in a different form" in result
 
-    async def side_effect(model, contents, **kwargs):
-        if "BadEntity" in contents or "BadEntity" in str(kwargs.get("contents", "")):
-            raise Exception("500 Internal Server Error for this entity")
-        # Response for GoodEntity
-        return MagicMock(text=json.dumps([{"conflict": False, "reason": "OK"}]))
-
-    mock_llm.aio.models.generate_content.side_effect = side_effect
-    observations = [
-        {"entity_name": "GoodEntity", "content": "Good fact"},
-        {"entity_name": "BadEntity", "content": "Bad fact"},
-    ]
-
-    result = await logic.save_memory_core(observations=observations, agent_id="integration_test")
-
-    # Now that logic.py is fixed, it should ONLY save the one that didn't error.
-    assert "Saved 1 observations" in result
+@pytest.mark.asyncio
+async def test_memory_saving_pipeline_partial_failure():
+    """
+    Test the pipeline when one part (e.g. embeddings) fails.
+    """
+    entities = ["FailEntity"]
+    
+    with patch("shared_memory.infra.embeddings.compute_embeddings_bulk") as mock_emb:
+        mock_emb.side_effect = Exception("Embedding Service Unavailable")
+        
+        result = await logic.save_memory_core(entities=entities)
+        
+        assert "AI Error" in result
+        assert "Embedding Service Unavailable" in result

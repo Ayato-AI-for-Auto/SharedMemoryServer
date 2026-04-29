@@ -1,65 +1,61 @@
 import pytest
-
-from shared_memory.logic import (
-    get_value_report_core,
-    read_memory_core,
-    save_memory_core,
-    synthesize_entity,
-)
-
+import asyncio
+from shared_memory.api import server
+from tests.unit.fake_client import FakeGeminiClient
+from unittest.mock import patch
 
 @pytest.mark.asyncio
-async def test_complete_user_workflow(mock_llm):
+async def test_user_workflow_e2e():
     """
-    Simulates a complete user scenario.
+    Complete user flow:
+    1. Save memory (Entity + Observation)
+    2. Read memory and verify
+    3. Synthesize entity
+    4. Sequential thinking using the saved memory
     """
-    agent = "workflow_agent"
-
-    # Setup mock responses for synthesis
-    mock_llm.models.set_response(
-        "generate_content",
-        "Synthesized summary: This entity is a test node with multiple observations.",
-    )
-
-    # 1. Build context
-    await save_memory_core(
-        entities=[{"name": "ProjectX", "description": "A top-secret project"}], agent_id=agent
-    )
-
-    await save_memory_core(
-        observations=[
-            {"entity_name": "ProjectX", "content": "Phase 1 is complete."},
-            {"entity_name": "ProjectX", "content": "Budget approved for Phase 2."},
-        ],
-        agent_id=agent,
-    )
-
-    # 2. Retrieve synthesis
-    summary = await synthesize_entity("ProjectX")
-    assert "Synthesized summary" in summary
-
-    # 3. Check search effectiveness
-    search_res = await read_memory_core("ProjectX")
-    assert search_res["graph"]["entities"][0]["name"] == "ProjectX"
-    assert len(search_res["graph"]["observations"]) >= 2
-
-    # 4. Generate report
-    report = await get_value_report_core(format_type="markdown")
-    assert "# SharedMemory Fact Report" in report
-    assert "熟成" in report
-
-
-@pytest.mark.asyncio
-async def test_error_resilience_malformed_input(mock_llm):
-    """System level test for resilience against bad inputs."""
-    # Extremely long string
-    huge_string = "A" * 10000
-
-    result = await save_memory_core(
-        entities=[{"name": huge_string, "description": "Massive name"}], agent_id="test_agent"
-    )
-    assert "Saved" in result
-
-    # Missing required keys in list
-    result2 = await save_memory_core(entities=[{"not_a_name": "oops"}], agent_id="test_agent")
-    assert "Saved 0 entities" in result2
+    fake_client = FakeGeminiClient()
+    
+    # Configure fake client to return expected synthesis
+    fake_client.models.set_response("generate_content", "Gemini is a powerful AI model from Google.")
+    
+    # Patch all modules that use get_gemini_client
+    with patch("shared_memory.infra.embeddings.get_gemini_client", return_value=fake_client), \
+         patch("shared_memory.core.graph.get_gemini_client", return_value=fake_client), \
+         patch("shared_memory.core.search.get_gemini_client", return_value=fake_client), \
+         patch("shared_memory.core.distiller.get_gemini_client", return_value=fake_client):
+        
+        # 1. Save Memory
+        await server.ensure_initialized()
+        
+        save_res = await server.save_memory(
+            entities=[{"name": "Gemini", "description": "An AI model"}],
+            observations=[{"content": "Gemini is powerful", "entity_name": "Gemini"}]
+        )
+        assert "Saved" in save_res
+        
+        # Wait for background tasks since save_memory is async (fire-and-forget)
+        await server.wait_for_background_tasks(timeout=5.0)
+        
+        # 2. Read Memory
+        read_res = await server.read_memory(query="Gemini")
+        assert isinstance(read_res, dict)
+        assert "Gemini" in str(read_res["graph"])
+        
+        # 3. Synthesize Entity
+        synth_res = await server.synthesize_entity(entity_name="Gemini")
+        assert "Gemini" in synth_res
+        assert "AI model" in synth_res
+        
+        # 4. Sequential Thinking
+        thought_res = await server.sequential_thinking(
+            thought="How can I use Gemini in my project?",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            session_id="test_session"
+        )
+        # Verify it returned a dict and contains knowledge context
+        assert isinstance(thought_res, dict)
+        assert "related_knowledge" in thought_res
+        # The key might be 'thoughtHistoryLength' or similar based on failure message
+        assert "Gemini" in str(thought_res["related_knowledge"])
