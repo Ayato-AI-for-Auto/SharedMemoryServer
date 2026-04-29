@@ -105,8 +105,6 @@ except Exception as e:
 import threading
 import time
 
-import fastmcp.tools.function_tool
-from fastmcp.tools.base import ToolResult
 
 _LAST_ACTIVITY_TIME = time.time()
 
@@ -140,87 +138,101 @@ def _inactivity_thread(timeout_seconds: int):
             break
 
 
-# Monkey-patch FunctionTool.run to allow extra arguments (compatibility with strict hosts)
-_original_run = fastmcp.tools.function_tool.FunctionTool.run
-
-
-async def _lenient_run(self, arguments: dict[str, Any]) -> ToolResult:
-    """Sanitize arguments and refresh activity timestamp on every tool call."""
-    update_activity()
-    if isinstance(arguments, dict) and hasattr(self, "parameters"):
-        properties = self.parameters.get("properties", {})
-        # Only keep arguments that are defined in the tool's properties
-        filtered_arguments = {k: v for k, v in arguments.items() if k in properties}
-        return await _original_run(self, filtered_arguments)
-    return await _original_run(self, arguments)
-
-
-fastmcp.tools.function_tool.FunctionTool.run = _lenient_run
-
-mcp = FastMCP("SharedMemoryServer_V2")
-
 # Global initialization state
-_INITIALIZED_EVENT = asyncio.Event()
+_INITIALIZED_EVENT: asyncio.Event | None = None
 _INIT_ERROR = None
-
-
-async def _background_init():
-    """Heavy lifting initialization in the background."""
-    global _INIT_ERROR
-    logger.info("ENTERED _background_init")
-    try:
-        logger.info("STEP 1: Starting main database initialization...")
-        await init_db()
-        logger.info("STEP 1: SUCCESS (Main DB initialized)")
-
-        logger.info("STEP 2: Starting thoughts database initialization...")
-        await thought_logic.init_thoughts_db()
-        logger.info("STEP 2: SUCCESS (Thoughts DB initialized)")
-
-        logger.info("BACKGROUND INITIALIZATION COMPLETE.")
-    except Exception as e:
-        _INIT_ERROR = e
-        logger.error(f"Background initialization FAILED: {e}", exc_info=True)
-        # We don't exit here because we want to report this via ensure_initialized()
-        # when a tool is called, providing better feedback to the user.
-    finally:
-        logger.info("EXITING _background_init (Initialized Event SET)")
-        _INITIALIZED_EVENT.set()
-
-
 _INIT_STARTED = False
 
 
 def trigger_init():
-    """
-    Triggers initialization by scheduling it on the current event loop.
-    """
+    """Starts the background initialization task if not already started."""
     global _INIT_STARTED
     if _INIT_STARTED:
         return
     _INIT_STARTED = True
+    from shared_memory.common.tasks import create_background_task
+
+    create_background_task(_background_init(), name="startup_init")
+
+
+async def _background_init():
+    """Heavy lifting initialization with detailed logging and step-specific error handling."""
+    global _INIT_ERROR, _INIT_STARTED, _INITIALIZED_EVENT
+    if _INITIALIZED_EVENT is None:
+        _INITIALIZED_EVENT = asyncio.Event()
+
+    if _INITIALIZED_EVENT.is_set():
+        return
+
+    _INIT_STARTED = True
+    logger.info("================================================================")
+    logger.info("   [SYSTEM INITIALIZATION] Starting background setup...")
+    logger.info("================================================================")
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            logger.info("Event loop is already running. Scheduling _background_init...")
-            from shared_memory.common.tasks import create_background_task
+        # Step 1: Knowledge Database
+        logger.info("STEP 1/2: Initializing Knowledge Database (SQLite)...")
+        try:
+            await init_db()
+            logger.info("STEP 1/2: [SUCCESS] Knowledge DB is ready.")
+        except Exception as e:
+            logger.error(f"STEP 1/2: [FAILED] Could not init Knowledge DB: {e}")
+            raise
 
-            create_background_task(_background_init(), name="background_init")
-        else:
-            logger.info("Event loop exists but not running. Scheduling for startup...")
+        # Step 2: Thoughts Database
+        logger.info("STEP 2/2: Initializing Thoughts Database (SQLite)...")
+        try:
+            await thought_logic.init_thoughts_db()
+            logger.info("STEP 2/2: [SUCCESS] Thoughts DB is ready.")
+        except Exception as e:
+            logger.error(f"STEP 2/2: [FAILED] Could not init Thoughts DB: {e}")
+            raise
 
-            def _start():
-                from shared_memory.common.tasks import create_background_task
-
-                create_background_task(_background_init(), name="background_init")
-
-            loop.call_soon(_start)
+        logger.info("================================================================")
+        logger.info("   [SYSTEM READY] All initialization steps completed.")
+        logger.info("================================================================")
     except Exception as e:
-        logger.warning(
-            f"Could not schedule init on default loop: {e}. Will fallback to tool-call trigger."
-        )
-        _INIT_STARTED = False
+        _INIT_ERROR = e
+        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        logger.error(f"   [FATAL ERROR] Initialization failed: {e}")
+        logger.error("   The server will continue to run but tools may fail.")
+        logger.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    finally:
+        _INITIALIZED_EVENT.set()
+
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(server):
+    """
+    Handles server startup and shutdown.
+    Ensures handshake is fast by moving DB init to background.
+    """
+    logger.info("Server lifespan STARTING. Triggering background initialization...")
+
+    # Initialize the event in the current loop
+    global _INITIALIZED_EVENT
+    if _INITIALIZED_EVENT is None:
+        _INITIALIZED_EVENT = asyncio.Event()
+
+    # Start init in background if not already started
+    trigger_init()
+
+    yield
+
+    # CLEANUP: Close persistent singleton connections on shutdown
+    logger.info("Server lifespan SHUTTING DOWN. Closing all database connections...")
+
+    await wait_for_background_tasks(timeout=5.0)
+    try:
+        from shared_memory.infra.database import close_all_connections
+        await close_all_connections()
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+
+# Create MCP server instance
+mcp = FastMCP("SharedMemoryServer", lifespan=lifespan)
 
 
 def trigger_inactivity_watcher(timeout: int):
@@ -238,14 +250,25 @@ def trigger_inactivity_watcher(timeout: int):
 
 _INIT_LOCK = asyncio.Lock()
 
-
 async def ensure_initialized():
     """Ensures the server is fully ready before tool execution."""
+    update_activity()
+    global _INITIALIZED_EVENT
+    if _INITIALIZED_EVENT is None:
+        _INITIALIZED_EVENT = asyncio.Event()
+
     if not _INITIALIZED_EVENT.is_set():
         async with _INIT_LOCK:
             if not _INITIALIZED_EVENT.is_set():
-                # Run initialization directly in this task to avoid task leak in tests
-                await _background_init()
+                logger.info("Tool called but initialization is still in progress. Waiting...")
+                if not _INIT_STARTED:
+                    logger.warning("Startup initialization was NOT triggered. Running fallback...")
+                    trigger_init()
+                    await _INITIALIZED_EVENT.wait()
+                else:
+                    # Wait for the background task to finish
+                    await _INITIALIZED_EVENT.wait()
+                    logger.info("Initialization complete. Resuming tool execution.")
 
     if _INIT_ERROR:
         from shared_memory.common.exceptions import DatabaseError
@@ -259,24 +282,6 @@ async def wait_for_background_tasks(timeout: float = 5.0):
 
     await _wait(timeout=timeout)
 
-
-@mcp.lifespan()
-async def lifespan(mcp_instance: FastMCP):
-    """
-    Handles server startup and shutdown.
-    Ensures handshake is fast by moving DB init to background.
-    """
-    logger.info("Lifespan STARTING...")
-    # Start init in background if not already started
-    trigger_init()
-
-    yield
-
-    # CLEANUP: Close persistent singleton connections on shutdown
-    logger.info("Lifespan SHUTTING DOWN, closing connections...")
-
-    await wait_for_background_tasks(timeout=5.0)
-    await close_all_connections()
 
 
 # ==========================================
@@ -516,8 +521,7 @@ def main():
     # Attach timeout to mcp instance for reference
     mcp._inactivity_timeout = args.timeout
 
-    # Start the initialization and inactivity watchers
-    trigger_init()
+    # Start the inactivity watchers
     trigger_inactivity_watcher(args.timeout)
 
     if not use_sse:
@@ -554,7 +558,6 @@ def main():
             mcp.run(transport="sse", port=args.port)
         else:
             logger.info("Launching FastMCP in STDIO mode...")
-            # transport="stdio" is default
             mcp.run(transport="stdio")
     except Exception as e:
         logger.error(f"CRITICAL: Server crashed: {e}", exc_info=True)
