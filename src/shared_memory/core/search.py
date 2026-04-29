@@ -2,18 +2,18 @@ import datetime
 import json
 import re
 
-from shared_memory.bank import read_bank_data
-from shared_memory.database import (
+from shared_memory.core.bank import read_bank_data
+from shared_memory.infra.database import (
     async_get_connection,
     async_get_thoughts_connection,
     log_search_stat,
 )
-from shared_memory.embeddings import (
+from shared_memory.infra.embeddings import (
     compute_embedding,
     get_gemini_client,
 )
-from shared_memory.graph import get_graph_data
-from shared_memory.utils import (
+from shared_memory.core.graph import get_graph_data
+from shared_memory.common.utils import (
     batch_cosine_similarity,
     calculate_importance,
     get_logger,

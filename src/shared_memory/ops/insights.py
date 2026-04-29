@@ -1,14 +1,14 @@
 from datetime import datetime
 from typing import Any
 
-from shared_memory.database import (
+from shared_memory.infra.database import (
     async_get_connection,
     async_get_thoughts_connection,
     init_db,
     retry_on_db_lock,
 )
-from shared_memory.thought_logic import init_thoughts_db
-from shared_memory.utils import get_logger
+from shared_memory.core.thought_logic import init_thoughts_db
+from shared_memory.common.utils import get_logger
 
 logger = get_logger("insights")
 

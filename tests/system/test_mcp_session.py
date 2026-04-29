@@ -1,7 +1,6 @@
 import pytest
 
-from shared_memory import server
-
+from shared_memory.api import server
 
 @pytest.mark.asyncio
 @pytest.mark.system
@@ -33,7 +32,7 @@ async def test_mcp_tool_session_flow(mock_llm):
     assert "thoughtNumber" in str(think_resp)
 
     # 3. インサイトの取得
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
     insights = await server.get_insights(format="json")

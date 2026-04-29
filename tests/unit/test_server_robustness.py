@@ -3,8 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from shared_memory import server
-
+from shared_memory.api import server
 
 @pytest.mark.asyncio
 @pytest.mark.unit
@@ -39,9 +38,9 @@ async def test_background_init_success(fake_llm):
     from unittest.mock import AsyncMock
 
     with (
-        patch("shared_memory.server.init_db", new_callable=AsyncMock) as mock_db,
+        patch("shared_memory.api.server.init_db", new_callable=AsyncMock) as mock_db,
         patch(
-            "shared_memory.server.thought_logic.init_thoughts_db", new_callable=AsyncMock
+            "shared_memory.api.server.thought_logic.init_thoughts_db", new_callable=AsyncMock
         ) as mock_thought,
     ):
         await server._background_init()
@@ -60,8 +59,8 @@ async def test_background_init_failure(fake_llm):
     server._INIT_ERROR = None
 
     with (
-        patch("shared_memory.server.init_db", side_effect=Exception("DB Crash")),
-        patch("shared_memory.server.logger.error") as mock_log_error,
+        patch("shared_memory.api.server.init_db", side_effect=Exception("DB Crash")),
+        patch("shared_memory.api.server.logger.error") as mock_log_error,
     ):
         await server._background_init()
 

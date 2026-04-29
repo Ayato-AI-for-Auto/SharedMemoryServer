@@ -1,4 +1,4 @@
-from shared_memory.logic import normalize_bank_files, normalize_observation_item
+from shared_memory.core.logic import normalize_bank_files, normalize_observation_item
 
 
 def test_normalize_bank_files_dict_format():

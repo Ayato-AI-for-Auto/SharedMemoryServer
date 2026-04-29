@@ -20,7 +20,7 @@ class ModelManager:
     @property
     def models(self):
         if self._models is None:
-            from shared_memory.config import GOOGLE_AI_MODELS
+            from shared_memory.common.config import GOOGLE_AI_MODELS
 
             self._models = GOOGLE_AI_MODELS
         return self._models

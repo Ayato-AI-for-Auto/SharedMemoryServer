@@ -5,14 +5,14 @@ from typing import Any
 
 import aiosqlite
 
-from shared_memory.database import (
+from shared_memory.infra.database import (
     _add_column_if_missing,
     async_get_thoughts_connection,
     retry_on_db_lock,
 )
-from shared_memory.exceptions import DatabaseError
-from shared_memory.salvage import salvage_related_knowledge
-from shared_memory.utils import (
+from shared_memory.common.exceptions import DatabaseError
+from shared_memory.cli.salvage import salvage_related_knowledge
+from shared_memory.common.utils import (
     get_logger,
     get_thoughts_db_path,
     log_error,
@@ -36,7 +36,7 @@ async def init_thoughts_db(force: bool = False):
         return
     db_path = get_thoughts_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    from shared_memory.database import _async_get_connection_raw
+    from shared_memory.infra.database import _async_get_connection_raw
 
     log_info(f"Initializing thoughts database at {db_path}...")
     async with await _async_get_connection_raw(db_path, is_thoughts=True) as conn:
@@ -98,7 +98,7 @@ async def process_thought_core(
     try:
         # Lazy initialization for both databases to handle cases where
         # lifespan didn't run.
-        from shared_memory.database import init_db
+        from shared_memory.infra.database import init_db
 
         await init_db()
         await init_thoughts_db()
@@ -166,10 +166,10 @@ async def process_thought_core(
 
         # 6. Salvage & Accretion (The Synergy)
         # 6.1 Accretion: Asynchronously extract and save new knowledge from this thought
-        from shared_memory.distiller import incremental_distill_knowledge
+        from shared_memory.core.distiller import incremental_distill_knowledge
 
         logger.info(f"Triggering incremental distillation for thought in session: {session_id}")
-        from shared_memory.tasks import create_background_task
+        from shared_memory.common.tasks import create_background_task
 
         create_background_task(
             incremental_distill_knowledge(session_id, thought),
@@ -197,13 +197,13 @@ async def process_thought_core(
 
         # 7. Opportunistic Recovery: Disabled during tests to prevent GHA hangs
         if "PYTEST_CURRENT_TEST" not in os.environ:
-            from shared_memory.tasks import create_background_task
+            from shared_memory.common.tasks import create_background_task
 
             create_background_task(trigger_opportunistic_recovery(), name="opportunistic_recovery")
 
         # 8. Final Distillation (Session Wrap-up)
         if not next_thought_needed:
-            from shared_memory.distiller import auto_distill_knowledge
+            from shared_memory.core.distiller import auto_distill_knowledge
 
             # Ensure the complete history is analyzed one last time for synthesis
             await auto_distill_knowledge(session_id, history)
@@ -282,7 +282,7 @@ async def recover_undistilled_sessions():
                 return
 
             log_info(f"Found {len(all_to_process)} undistilled sessions to recover.")
-            from shared_memory.distiller import auto_distill_knowledge
+            from shared_memory.core.distiller import auto_distill_knowledge
 
             for sess_id in all_to_process:
                 history = await get_thought_history(sess_id)

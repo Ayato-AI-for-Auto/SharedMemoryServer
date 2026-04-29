@@ -34,12 +34,12 @@ async def test_init_db_creates_file():
 async def test_async_get_connection_singleton():
     """Verify that async_get_connection returns a valid connection wrapper."""
     conn_wrapper = await async_get_connection()
-    # Need to enter context to set conn
-    async with conn_wrapper as conn:
-        assert isinstance(conn, aiosqlite.Connection)
-
-    conn_wrapper2 = await async_get_connection()
-    assert conn_wrapper is conn_wrapper2  # Should be same wrapper instance
+    async with conn_wrapper as conn1:
+        assert isinstance(conn1, aiosqlite.Connection)
+        
+        conn_wrapper2 = await async_get_connection()
+        async with conn_wrapper2 as conn2:
+            assert conn1 is conn2  # Should be the same underlying singleton connection
 
 
 @pytest.mark.asyncio

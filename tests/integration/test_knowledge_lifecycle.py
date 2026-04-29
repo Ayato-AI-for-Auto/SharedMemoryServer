@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from shared_memory.logic import (
+from shared_memory.core.logic import (
     list_inactive_knowledge_core,
     manage_knowledge_activation_core,
     read_memory_core,

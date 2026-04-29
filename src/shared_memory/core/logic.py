@@ -5,16 +5,18 @@ from typing import Any
 
 import aiosqlite
 
-from shared_memory import bank, graph, health, lifecycle, management, search
-from shared_memory.database import (
+from shared_memory.core import bank, graph, search
+from shared_memory.ops import lifecycle, management
+from shared_memory.ops import health
+from shared_memory.infra.database import (
     async_get_connection,
     get_write_semaphore,
     init_db,
     retry_on_db_lock,
 )
-from shared_memory.embeddings import compute_embeddings_bulk
-from shared_memory.insights import InsightEngine
-from shared_memory.utils import get_logger, log_error
+from shared_memory.infra.embeddings import compute_embeddings_bulk
+from shared_memory.ops.insights import InsightEngine
+from shared_memory.common.utils import get_logger, log_error
 
 logger = get_logger("logic")
 
@@ -327,7 +329,7 @@ async def read_memory_core(query: str | None = None) -> dict[str, Any] | str:
     start_time = time.perf_counter()
     logger.info(f"read_memory_core START query='{query}'")
     try:
-        from shared_memory.database import init_db
+        from shared_memory.infra.database import init_db
 
         await init_db()
     except Exception as e:

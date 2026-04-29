@@ -1,8 +1,7 @@
 import argparse
 import asyncio
 
-from shared_memory import logic, thought_logic
-
+from shared_memory.core import logic, thought_logic
 
 async def run_history(args):
     history = await logic.get_audit_history_core(limit=args.limit)
@@ -40,8 +39,7 @@ async def run_snapshot(args):
         print(res)
     elif args.subcommand == "list":
         # We need a list_snapshots function in management or logic
-        from shared_memory import management
-
+from shared_memory.ops import management
         snapshots = await management.list_snapshots_logic()
         if not snapshots:
             print("No snapshots found.")

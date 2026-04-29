@@ -4,8 +4,7 @@ import sqlite3
 
 import pytest
 
-from shared_memory import logic
-
+from shared_memory.core import logic
 
 @pytest.mark.asyncio
 @pytest.mark.chaos

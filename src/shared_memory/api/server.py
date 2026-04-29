@@ -82,8 +82,8 @@ from fastmcp import FastMCP
 # Delayed imports to catch potential errors in submodules
 logger.info("Importing core submodules (logic, thought_logic, database)...")
 try:
-    from shared_memory import logic, thought_logic
-    from shared_memory.database import close_all_connections, init_db
+    from shared_memory.core import logic, thought_logic
+    from shared_memory.infra.database import close_all_connections, init_db
 
     logger.info("Core submodules imported successfully")
 except Exception as e:
@@ -194,14 +194,14 @@ def trigger_init():
         loop = asyncio.get_event_loop()
         if loop.is_running():
             logger.info("Event loop is already running. Scheduling _background_init...")
-            from shared_memory.tasks import create_background_task
+            from shared_memory.common.tasks import create_background_task
 
             create_background_task(_background_init(), name="background_init")
         else:
             logger.info("Event loop exists but not running. Scheduling for startup...")
 
             def _start():
-                from shared_memory.tasks import create_background_task
+                from shared_memory.common.tasks import create_background_task
 
                 create_background_task(_background_init(), name="background_init")
 
@@ -238,14 +238,14 @@ async def ensure_initialized():
                 await _background_init()
 
     if _INIT_ERROR:
-        from shared_memory.exceptions import DatabaseError
+        from shared_memory.common.exceptions import DatabaseError
 
         raise DatabaseError(f"Server failed to initialize: {_INIT_ERROR}")
 
 
 async def wait_for_background_tasks(timeout: float = 5.0):
     """Wait for all currently tracked background tasks to complete."""
-    from shared_memory.tasks import wait_for_background_tasks as _wait
+    from shared_memory.common.tasks import wait_for_background_tasks as _wait
 
     await _wait(timeout=timeout)
 
@@ -310,7 +310,7 @@ async def save_memory(
     await ensure_initialized()
 
     # Fire and forget
-    from shared_memory.tasks import create_background_task
+    from shared_memory.common.tasks import create_background_task
 
     create_background_task(
         _run_save_memory_background(entities, relations, observations, bank_files, agent_id),
@@ -437,7 +437,7 @@ async def get_insights(format: str = "markdown"):
     ビジネス上のROIやトークン削減量、知識の再利用率を確認するために使用します。
     """
     await ensure_initialized()
-    from shared_memory.insights import InsightEngine
+    from shared_memory.ops.insights import InsightEngine
 
     metrics = await InsightEngine.get_summary_metrics()
     if format == "json":
@@ -452,7 +452,7 @@ async def check_integrity():
     including DB status, Vector store synchronization, and Environment pools.
     """
     await ensure_initialized()
-    from shared_memory.health import get_comprehensive_diagnostics
+    from shared_memory.ops.health import get_comprehensive_diagnostics
 
     return await get_comprehensive_diagnostics()
 

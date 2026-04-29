@@ -3,10 +3,10 @@ import os
 
 import aiofiles
 
-from shared_memory.config import settings
-from shared_memory.database import async_get_connection, update_access
-from shared_memory.embeddings import compute_embeddings_bulk
-from shared_memory.utils import (
+from shared_memory.common.config import settings
+from shared_memory.infra.database import async_get_connection, update_access
+from shared_memory.infra.embeddings import compute_embeddings_bulk
+from shared_memory.common.utils import (
     GlobalLock,
     get_bank_dir,
     get_logger,

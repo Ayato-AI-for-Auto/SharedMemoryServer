@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shared_memory.database import async_get_connection
-from shared_memory.thought_logic import process_thought_core
+from shared_memory.infra.database import async_get_connection
+from shared_memory.core.thought_logic import process_thought_core
 
 
 @pytest.mark.asyncio
@@ -14,7 +14,7 @@ async def test_frictionless_accretion_and_salvage(mock_llm):
     1. Thought A contains a new fact -> System distills it into DB.
     2. Thought B in a new session asks about it -> System salvages it from DB.
     """
-    from shared_memory.ai_control import AIRateLimiter
+    from shared_memory.core.ai_control import AIRateLimiter
 
     AIRateLimiter.set_min_interval(0)
 
@@ -70,7 +70,7 @@ async def test_frictionless_accretion_and_salvage(mock_llm):
     )
 
     # Wait for the background distillation task to complete
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 
@@ -138,7 +138,7 @@ async def test_thought_privacy_masking(mock_llm):
         session_id=session_id,
     )
 
-    from shared_memory.database import async_get_thoughts_connection
+    from shared_memory.infra.database import async_get_thoughts_connection
 
     async with await async_get_thoughts_connection() as conn:
         cursor = await conn.execute(

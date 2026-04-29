@@ -6,8 +6,8 @@ import sqlite3
 
 import aiosqlite
 
-from shared_memory.exceptions import DatabaseError, DatabaseLockedError
-from shared_memory.utils import get_db_path, get_logger, log_error
+from shared_memory.common.exceptions import DatabaseError, DatabaseLockedError
+from shared_memory.common.utils import get_db_path, get_logger, log_error
 
 logger = get_logger("database")
 
@@ -116,7 +116,7 @@ class AsyncSQLiteConnection:
 
             return self.conn
         except Exception as e:
-            from shared_memory.exceptions import DatabaseError
+            from shared_memory.common.exceptions import DatabaseError
 
             logger.error(f"Failed to connect to database at {self.db_path}: {e}", exc_info=True)
             log_error(f"Failed to connect to database at {self.db_path}", e)
@@ -173,8 +173,8 @@ async def async_get_thoughts_connection():
     Returns an AsyncSQLiteConnection wrapper for the thoughts database.
     Guarantees that init_thoughts_db() has been called.
     """
-    from shared_memory.thought_logic import init_thoughts_db
-    from shared_memory.utils import get_thoughts_db_path
+    from shared_memory.core.thought_logic import init_thoughts_db
+    from shared_memory.common.utils import get_thoughts_db_path
 
     await init_thoughts_db()
     return await _async_get_connection_raw(get_thoughts_db_path(), is_thoughts=True)

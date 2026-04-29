@@ -3,14 +3,14 @@ import json
 from datetime import datetime
 from typing import Any
 
-from shared_memory.ai_control import AIRateLimiter
-from shared_memory.config import settings
-from shared_memory.database import async_get_connection
-from shared_memory.embeddings import (
+from shared_memory.core.ai_control import AIRateLimiter
+from shared_memory.common.config import settings
+from shared_memory.infra.database import async_get_connection
+from shared_memory.infra.embeddings import (
     compute_embeddings_bulk,
     get_gemini_client,
 )
-from shared_memory.utils import get_logger, log_error, mask_sensitive_data
+from shared_memory.common.utils import get_logger, log_error, mask_sensitive_data
 
 logger = get_logger("graph")
 
@@ -154,7 +154,7 @@ async def save_entities(
         try:
             importance = max(1, min(10, int(importance)))
         except (ValueError, TypeError):
-            from shared_memory.utils import get_logger
+            from shared_memory.common.utils import get_logger
 
             get_logger("graph").debug(
                 f"Invalid importance value for {name}: {importance}. Defaulting to 5."

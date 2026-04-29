@@ -2,8 +2,7 @@ import json
 
 import pytest
 
-from shared_memory import logic, thought_logic
-
+from shared_memory.core import logic, thought_logic
 
 @pytest.mark.asyncio
 @pytest.mark.system
@@ -45,7 +44,7 @@ async def test_reasoning_synergy_and_distillation(mock_llm):
     )
 
     # Wait for background incremental distillation task
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 
@@ -110,7 +109,7 @@ async def test_reasoning_synergy_and_distillation(mock_llm):
     )
 
     # Wait for background final distillation
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 

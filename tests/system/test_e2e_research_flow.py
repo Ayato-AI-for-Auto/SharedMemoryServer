@@ -2,8 +2,7 @@ import json
 
 import pytest
 
-from shared_memory import server
-
+from shared_memory.api import server
 
 @pytest.mark.asyncio
 async def test_e2e_researcher_workflow(mock_llm):
@@ -24,7 +23,7 @@ async def test_e2e_researcher_workflow(mock_llm):
     assert "Saved" in res1
 
     # Ensure background save is finished before proceeding
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 
@@ -75,7 +74,7 @@ async def test_e2e_researcher_workflow(mock_llm):
     )
 
     # Wait for background distillation
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 

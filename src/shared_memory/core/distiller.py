@@ -1,11 +1,11 @@
 import json
 from typing import Any
 
-from shared_memory import logic
-from shared_memory.ai_control import AIRateLimiter, retry_on_ai_quota
-from shared_memory.config import settings
-from shared_memory.embeddings import get_gemini_client
-from shared_memory.utils import (
+from shared_memory.core import logic
+from shared_memory.core.ai_control import AIRateLimiter, retry_on_ai_quota
+from shared_memory.common.config import settings
+from shared_memory.infra.embeddings import get_gemini_client
+from shared_memory.common.utils import (
     get_logger,
     log_error,
     log_info,
@@ -167,8 +167,7 @@ async def incremental_distill_knowledge(session_id: str, thought: str):
         observations = extracted.get("observations", [])
 
         if entities or relations or observations:
-            from shared_memory import logic
-
+            from shared_memory.core import logic
             await logic.save_memory_core(
                 entities=entities,
                 relations=relations,

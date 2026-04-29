@@ -1,6 +1,6 @@
 import pytest
 
-from shared_memory.logic import read_memory_core, save_memory_core
+from shared_memory.core.logic import read_memory_core, save_memory_core
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from shared_memory.infra.database import async_get_connection, init_db
 @pytest.mark.asyncio
 async def test_add_entities_to_graph():
     """Verify adding entities to the graph."""
+    print(f"DEBUG GRAPH FILE: {graph.__file__}")
     await init_db(force=True)
     entities = [
         {"name": "E1", "entity_type": "T1", "description": "D1"},
@@ -30,24 +31,28 @@ async def test_check_conflict_isolated(fake_llm_client):
     """Verify conflict checking using FakeGeminiClient."""
     await init_db(force=True)
 
-    # Set up existing entity
+    # Set up existing entity and observation
     async with await async_get_connection() as conn:
         await graph.save_entities(
             [{"name": "Static", "description": "Old info"}], "test_agent", conn
         )
+        await conn.execute(
+            "INSERT INTO observations (entity_name, content, created_by) VALUES (?, ?, ?)",
+            ("Static", "Initial state", "test_agent"),
+        )
+        await conn.commit()
 
     # Mocking both sync and async client getters
     with patch("shared_memory.core.graph.get_gemini_client", return_value=fake_llm_client):
         # Case 1: No conflict (FakeClient default)
-        conflicts = await graph.check_conflict(["Static"], ["New info"])
+        conflicts = await graph.check_conflict("Static", ["New info"], "test_agent")
         assert conflicts[0][0] is False
 
         # Case 2: Force conflict via FakeClient
-        print(f"DEBUG: fake_llm_client.models type: {type(fake_llm_client.models)}")
         fake_llm_client.models.set_response(
             method_name="generate_content", text='{"conflict": true, "reason": "Already exists"}'
         )
-        conflicts = await graph.check_conflict(["Static"], ["Old info"])
+        conflicts = await graph.check_conflict("Static", ["Old info"], "test_agent")
         assert conflicts[0][0] is True
         assert conflicts[0][1] == "Already exists"
 

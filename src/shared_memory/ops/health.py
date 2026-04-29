@@ -6,8 +6,8 @@ from typing import Any
 
 import aiosqlite
 
-from shared_memory.database import async_get_connection
-from shared_memory.utils import get_bank_dir, get_db_path, log_error
+from shared_memory.infra.database import async_get_connection
+from shared_memory.common.utils import get_bank_dir, get_db_path, log_error
 
 
 async def check_db_health() -> dict[str, Any]:
@@ -17,11 +17,13 @@ async def check_db_health() -> dict[str, Any]:
     db_path = get_db_path()
     stats = {
         "path": db_path,
+        "status": "unhealthy",
         "size_bytes": 0,
         "page_count": 0,
         "page_size": 0,
         "fragmentation_ratio": 0.0,
         "wal_mode": False,
+        "entities_count": 0,
     }
 
     if not os.path.exists(db_path):
@@ -46,6 +48,11 @@ async def check_db_health() -> dict[str, Any]:
             freelist_count = (await cursor.fetchone())[0]
             if stats["page_count"] > 0:
                 stats["fragmentation_ratio"] = freelist_count / stats["page_count"]
+
+            # Entity count for sanity
+            cursor = await conn.execute("SELECT COUNT(*) FROM entities")
+            stats["entities_count"] = (await cursor.fetchone())[0]
+            stats["status"] = "healthy"
 
         except aiosqlite.Error as e:
             log_error("Failed to check DB health", e)
@@ -75,7 +82,7 @@ async def check_api_connectivity() -> dict[str, Any]:
     """
     Verifies connectivity to the embedding service.
     """
-    from shared_memory.embeddings import get_gemini_client
+    from shared_memory.infra.embeddings import get_gemini_client
 
     start_time = time.time()
     try:
@@ -128,6 +135,8 @@ async def get_comprehensive_diagnostics() -> dict[str, Any]:
     return {
         "timestamp": datetime.now(UTC).isoformat(),
         "status": overall_status,
+        "db_status": "healthy" if db["status"] == "healthy" else "unhealthy",
+        "disk_status": "healthy" if disk["percent_free"] > 5 else "warning",
         "issues": issues,
         "components": {"database": db, "storage": disk, "api": api},
     }

@@ -2,8 +2,7 @@ import json
 
 import pytest
 
-from shared_memory import server
-
+from shared_memory.api import server
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -21,11 +20,11 @@ async def test_save_memory_async_system_flow(fake_llm):
     assert "initiated in background" in response
 
     # Wait for the background task to complete
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 
-    from shared_memory.search import search_memory_logic
+    from shared_memory.core.search import search_memory_logic
 
     res = await search_memory_logic("SystemEntity")
     if not any("System test fact" in r["content"] for r in res.get("observations", [])):
@@ -38,8 +37,8 @@ async def test_full_thought_to_knowledge_loop(fake_llm):
     """
     Tests the complete loop: Thought -> Distillation (Background) -> Persistence.
     """
-    from shared_memory import thought_logic
-    from shared_memory.search import search_memory_logic
+    from shared_memory.core import thought_logic
+    from shared_memory.core.search import search_memory_logic
 
     session_id = "system_test_session"
     # The thought should be clear so the distiller extracts an entity and observation
@@ -76,7 +75,7 @@ async def test_full_thought_to_knowledge_loop(fake_llm):
     )
 
     # 2. The distillation is a background task. Wait for it.
-    from shared_memory.tasks import wait_for_background_tasks
+    from shared_memory.common.tasks import wait_for_background_tasks
 
     await wait_for_background_tasks()
 

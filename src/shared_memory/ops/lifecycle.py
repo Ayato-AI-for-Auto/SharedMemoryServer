@@ -1,8 +1,8 @@
 import aiosqlite
 
-from shared_memory.database import async_get_connection, retry_on_db_lock
-from shared_memory.exceptions import DatabaseError
-from shared_memory.utils import get_logger
+from shared_memory.infra.database import async_get_connection, retry_on_db_lock
+from shared_memory.common.exceptions import DatabaseError
+from shared_memory.common.utils import get_logger
 
 logger = get_logger("lifecycle")
 

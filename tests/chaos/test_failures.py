@@ -4,9 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from shared_memory import logic, server
-
-
+from shared_memory.core import logic
+from shared_memory.api import server
 @pytest.mark.asyncio
 @pytest.mark.chaos
 async def test_corrupt_llm_json_response(mock_llm):
@@ -22,7 +21,7 @@ async def test_corrupt_llm_json_response(mock_llm):
         await logic.save_memory_core(entities=entities)
     except json.JSONDecodeError as e:
         # もしデコードエラーがそのまま上がる設計なら、それはそれで検知
-        from shared_memory.utils import get_logger
+        from shared_memory.common.utils import get_logger
 
         get_logger("tests").error(f"JSON corruption detected as expected: {e}")
     except Exception as e:
@@ -35,7 +34,7 @@ async def test_corrupt_llm_json_response(mock_llm):
 async def test_database_busy_simulation(fake_llm):
     """異常系: データベースがロックされている状況をシミュレート (Adversarial)"""
     # aiosqlite.connect ではなく、より上位の初期化関数をモックして失敗させる
-    with patch("shared_memory.server.init_db", side_effect=Exception("database is locked")):
+    with patch("shared_memory.api.server.init_db", side_effect=Exception("database is locked")):
         server._INITIALIZED_EVENT.clear()
         server._INIT_ERROR = None
         await server._background_init()
@@ -43,7 +42,7 @@ async def test_database_busy_simulation(fake_llm):
         assert server._INITIALIZED_EVENT.is_set()
         assert server._INIT_ERROR is not None
 
-        from shared_memory.exceptions import DatabaseError
+        from shared_memory.common.exceptions import DatabaseError
 
         with pytest.raises(DatabaseError):
             await server.read_memory(query="test")

@@ -10,8 +10,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 async def setup_teardown_db(request):
-    from shared_memory.database import close_all_connections, init_db
-    from shared_memory.thought_logic import init_thoughts_db
+    from shared_memory.infra.database import close_all_connections, init_db
+    from shared_memory.core.thought_logic import init_thoughts_db
 
     # Standard path resolution for testing - Use a more specific prefix
     home_dir = tempfile.mkdtemp(prefix="sm_test_")
@@ -25,8 +25,7 @@ async def setup_teardown_db(request):
     await init_thoughts_db(force=True)
 
     # Reset server initialization state
-    from shared_memory import server
-
+    from shared_memory.api import server
     server._INITIALIZED_EVENT.clear()
     server._INIT_ERROR = None
 
@@ -35,7 +34,7 @@ async def setup_teardown_db(request):
     # Teardown: Close singleton connections before rmtree (Windows requirement)
     # We must ensure all connections are closed and references cleared
     try:
-        from shared_memory.server import wait_for_background_tasks
+        from shared_memory.api.server import wait_for_background_tasks
 
         await wait_for_background_tasks(timeout=2.0)
         await close_all_connections()
@@ -55,18 +54,18 @@ async def setup_teardown_db(request):
 
 
 @pytest.fixture
-def fake_llm():
+def fake_llm_client():
     """Deterministic LLM stub for Unit Tests (No MagicMock)."""
     from tests.unit.fake_client import FakeGeminiClient
 
     client = FakeGeminiClient()
 
     patches = [
-        patch("shared_memory.embeddings.get_gemini_client", return_value=client),
-        patch("shared_memory.distiller.get_gemini_client", return_value=client),
-        patch("shared_memory.graph.get_gemini_client", return_value=client),
-        patch("shared_memory.salvage.get_gemini_client", return_value=client),
-        patch("shared_memory.search.get_gemini_client", return_value=client),
+        patch("shared_memory.infra.embeddings.get_gemini_client", return_value=client),
+        patch("shared_memory.core.distiller.get_gemini_client", return_value=client),
+        patch("shared_memory.core.graph.get_gemini_client", return_value=client),
+        patch("shared_memory.cli.salvage.get_gemini_client", return_value=client),
+        patch("shared_memory.core.search.get_gemini_client", return_value=client),
     ]
 
     for p in patches:
@@ -123,11 +122,11 @@ def mock_llm(request):
     client.aio.models.list.return_value = [model_obj]
 
     patches = [
-        patch("shared_memory.embeddings.get_gemini_client", return_value=client),
-        patch("shared_memory.distiller.get_gemini_client", return_value=client),
-        patch("shared_memory.graph.get_gemini_client", return_value=client),
-        patch("shared_memory.salvage.get_gemini_client", return_value=client),
-        patch("shared_memory.search.get_gemini_client", return_value=client),
+        patch("shared_memory.infra.embeddings.get_gemini_client", return_value=client),
+        patch("shared_memory.core.distiller.get_gemini_client", return_value=client),
+        patch("shared_memory.core.graph.get_gemini_client", return_value=client),
+        patch("shared_memory.cli.salvage.get_gemini_client", return_value=client),
+        patch("shared_memory.core.search.get_gemini_client", return_value=client),
     ]
 
     for p in patches:
@@ -149,6 +148,12 @@ def auto_mock_llm(request):
     if "unit" in request.node.keywords:
         return None
     return request.getfixturevalue("mock_llm")
+
+
+@pytest.fixture
+def fake_llm(fake_llm_client):
+    """Alias for fake_llm_client for backward compatibility."""
+    return fake_llm_client
 
 
 @contextmanager

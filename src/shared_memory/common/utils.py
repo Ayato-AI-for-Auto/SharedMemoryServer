@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from loguru import logger
 
-from shared_memory.exceptions import SecurityError
+from shared_memory.common.exceptions import SecurityError
 
 # Global flag for structured logging (defined in config)
 _STRUCTURED_LOGGING = False

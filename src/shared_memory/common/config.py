@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from shared_memory.utils import get_logger
+from shared_memory.common.utils import get_logger
 
 logger = get_logger("config")
 
@@ -106,7 +106,7 @@ class Settings:
     def generative_model(self) -> str:
         """推論や知識抽出に使用する現在の生成モデル名を返す。"""
         # Dynamic rotation support
-        from shared_memory.ai_control import model_manager
+        from shared_memory.core.ai_control import model_manager
 
         return model_manager.get_current_model()
 
