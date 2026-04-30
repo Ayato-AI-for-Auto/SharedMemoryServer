@@ -134,6 +134,8 @@ async def _permissive_received_request(self, responder: Any):
     """
     # Identify request type for logging/logic
     request_type = type(responder.request.root).__name__
+    # CRITICAL DEBUG: Log every request and its session object ID at INFO level
+    logger.info(f"[MCP SESSION][Object:{id(self)}] Received {request_type}")
 
     # If it's an InitializeRequest, we always let the original handler take it
     if request_type == "InitializeRequest" or isinstance(responder.request.root, types.InitializeRequest):
