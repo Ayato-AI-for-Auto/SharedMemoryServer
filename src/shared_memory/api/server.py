@@ -18,9 +18,13 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Sequence, Iterable
 
 from loguru import logger
+
+# MCP Protocol Imports for Monkeypatching
+import mcp.types as types
+from mcp.server.session import ServerSession, InitializationState
 
 
 # Intercept standard logging with Loguru
@@ -115,6 +119,54 @@ except Exception as e:
     logger.error(f"CRITICAL: Failed to import submodules: {e}", exc_info=True)
     # Re-raise to ensure the process fails visibly
     raise e
+
+
+# --- MCP PROTOCOL PATCH: PERMISSIVE HANDSHAKE ---
+# This addresses the race condition where a client sends a tool call
+# while the 'initialize' response is still being processed in the background.
+_original_received_request = ServerSession._received_request
+
+
+async def _permissive_received_request(self, responder: Any):
+    """
+    Patched version of ServerSession._received_request that handles the
+    'Initializing' state more gracefully to avoid race conditions.
+    """
+    request_type = type(responder.request.root).__name__
+
+    # If it's an InitializeRequest, we always let the original handler take it
+    if isinstance(responder.request.root, types.InitializeRequest):
+        logger.info(f"[MCP SESSION] Starting handshake for session {id(self)}")
+        return await _original_received_request(self, responder)
+
+    # If we are currently initializing, wait for a short duration
+    # instead of failing immediately with RuntimeError.
+    retries = 0
+    while self._initialization_state == InitializationState.Initializing and retries < 20:
+        await asyncio.sleep(0.05)
+        retries += 1
+
+    if retries > 0:
+        logger.info(
+            f"[MCP SESSION] Delayed request {request_type} by {retries * 0.05:.2f}s "
+            "until initialization finished."
+        )
+
+    # Now let the original handler check the state
+    try:
+        return await _original_received_request(self, responder)
+    except RuntimeError as e:
+        if "Received request before initialization" in str(e):
+            logger.warning(
+                f"[MCP SESSION] Handshake FAILED or SKIPPED for {request_type}. "
+                f"State: {self._initialization_state}"
+            )
+        raise e
+
+
+# Apply the monkeypatch
+ServerSession._received_request = _permissive_received_request
+logger.info("MCP Protocol Patch: ServerSession._received_request is now PERMISSIVE.")
 
 # Create MCP server instance
 
@@ -231,6 +283,18 @@ async def lifespan(server):
     if _INITIALIZED_EVENT is None:
         _INITIALIZED_EVENT = asyncio.Event()
 
+    # Log session details if available (FastMCP server is low-level Server)
+    session_info = "Unknown Session"
+    try:
+        # Check if we can extract session ID from the underlying transport/session
+        if hasattr(server, "request_context"):
+            # Note: server is usually MCPServer (low-level Server)
+            session_info = f"Session {id(server)}"
+    except Exception:
+        pass
+
+    logger.info(f"[{session_info}] Lifecycle STARTING. Triggering background initialization...")
+
     # Start init in background if not already started
     trigger_init()
 
@@ -282,7 +346,10 @@ async def ensure_initialized():
     if not _INITIALIZED_EVENT.is_set():
         async with _get_init_lock():
             if not _INITIALIZED_EVENT.is_set():
-                logger.info("Tool called but initialization is still in progress. Waiting...")
+                logger.info(
+                    "CORE SYSTEM: Tool called but background initialization is still in progress. "
+                    "Pausing tool execution until [SYSTEM READY]..."
+                )
                 if not _INIT_STARTED:
                     logger.warning("Startup initialization was NOT triggered. Running fallback...")
                     trigger_init()
