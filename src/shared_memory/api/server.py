@@ -132,19 +132,25 @@ async def _permissive_received_request(self, responder: Any):
     Patched version of ServerSession._received_request that handles the
     'Initializing' state more gracefully to avoid race conditions.
     """
+    # Identify request type for logging/logic
     request_type = type(responder.request.root).__name__
 
     # If it's an InitializeRequest, we always let the original handler take it
-    if isinstance(responder.request.root, types.InitializeRequest):
-        logger.info(f"[MCP SESSION] Starting handshake for session {id(self)}")
+    if request_type == "InitializeRequest" or isinstance(responder.request.root, types.InitializeRequest):
+        logger.debug(f"[MCP SESSION] Starting handshake for session {id(self)}")
         return await _original_received_request(self, responder)
 
-    # If we are currently initializing, wait for a short duration
-    # instead of failing immediately with RuntimeError.
     retries = 0
-    while self._initialization_state == InitializationState.Initializing and retries < 20:
-        await asyncio.sleep(0.05)
-        retries += 1
+    # If we are not initialized yet, wait for the handshake to arrive/process
+    # instead of failing immediately with RuntimeError.
+    # IMPORTANT: We only wait if the current request is NOT the InitializeRequest itself.
+    if request_type != "InitializeRequest":
+        while (
+            self._initialization_state in (InitializationState.NotInitialized, InitializationState.Initializing)
+            and retries < 40
+        ):
+            await asyncio.sleep(0.05)
+            retries += 1
 
     if retries > 0:
         logger.info(
