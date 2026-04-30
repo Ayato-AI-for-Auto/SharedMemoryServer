@@ -6,7 +6,7 @@ from datetime import datetime
 
 import aiosqlite
 
-from shared_memory.utils import get_db_path, get_logger
+from shared_memory.common.utils import get_db_path, get_logger
 
 logger = get_logger("migration")
 
@@ -121,7 +121,7 @@ class MigrationManager:
 
 async def run_standalone():
     """CLI entry point for manual migration run."""
-    from shared_memory.database import async_get_connection
+    from shared_memory.infra.database import async_get_connection
 
     mgr = MigrationManager()
     async with await async_get_connection() as conn:

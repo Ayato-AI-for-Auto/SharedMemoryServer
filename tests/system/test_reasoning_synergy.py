@@ -1,9 +1,8 @@
-import asyncio
 import json
 
 import pytest
 
-from shared_memory import logic, thought_logic
+from shared_memory.core import logic, thought_logic
 
 
 @pytest.mark.asyncio
@@ -46,7 +45,9 @@ async def test_reasoning_synergy_and_distillation(mock_llm):
     )
 
     # Wait for background incremental distillation task
-    await asyncio.sleep(0.5)
+    from shared_memory.common.tasks import wait_for_background_tasks
+
+    await wait_for_background_tasks()
 
     # Verify Session A knowledge was saved to Graph
     search_a = await logic.read_memory_core("CoreEngine")
@@ -109,7 +110,9 @@ async def test_reasoning_synergy_and_distillation(mock_llm):
     )
 
     # Wait for background final distillation
-    await asyncio.sleep(0.5)
+    from shared_memory.common.tasks import wait_for_background_tasks
+
+    await wait_for_background_tasks()
 
     # Verify final synthesized knowledge exists
     search_final = await logic.read_memory_core("SharedMemoryServer")

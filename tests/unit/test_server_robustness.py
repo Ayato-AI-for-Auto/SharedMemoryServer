@@ -1,9 +1,9 @@
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from shared_memory import server
+from shared_memory.api import server
 
 
 @pytest.mark.asyncio
@@ -11,12 +11,15 @@ from shared_memory import server
 async def test_ensure_initialized_waits(fake_llm):
     """ensure_initialized が初期化完了まで待機することを検証"""
     # 初期状態を未初期化に設定
-    server._INITIALIZED_EVENT.clear()
+    if server._INITIALIZED_EVENT:
+        server._INITIALIZED_EVENT.clear()
     server._INIT_ERROR = None
 
     # 200ms後に初期化を完了させるタスク
     async def finish_init_delayed():
         await asyncio.sleep(0.2)
+        if server._INITIALIZED_EVENT is None:
+            server._INITIALIZED_EVENT = asyncio.Event()
         server._INITIALIZED_EVENT.set()
 
     asyncio.create_task(finish_init_delayed())
@@ -32,16 +35,14 @@ async def test_ensure_initialized_waits(fake_llm):
 @pytest.mark.unit
 async def test_background_init_success(fake_llm):
     """_background_init が正常に完了し、フラグを立てることを検証"""
-    server._INITIALIZED_EVENT.clear()
+    if server._INITIALIZED_EVENT:
+        server._INITIALIZED_EVENT.clear()
     server._INIT_ERROR = None
 
-    # AsyncMock を使用して非同期関数を正しくモック
-    from unittest.mock import AsyncMock
-
     with (
-        patch("shared_memory.server.init_db", new_callable=AsyncMock) as mock_db,
+        patch("shared_memory.api.server.init_db", new_callable=AsyncMock) as mock_db,
         patch(
-            "shared_memory.server.thought_logic.init_thoughts_db", new_callable=AsyncMock
+            "shared_memory.api.server.thought_logic.init_thoughts_db", new_callable=AsyncMock
         ) as mock_thought,
     ):
         await server._background_init()
@@ -55,17 +56,20 @@ async def test_background_init_success(fake_llm):
 @pytest.mark.asyncio
 @pytest.mark.unit
 async def test_background_init_failure(fake_llm):
-    """初期化失敗時に適切にログ出力され、フラグが立たないことを検証"""
-    server._INITIALIZED_EVENT.clear()
+    if server._INITIALIZED_EVENT:
+        server._INITIALIZED_EVENT.clear()
     server._INIT_ERROR = None
 
     with (
-        patch("shared_memory.server.init_db", side_effect=Exception("DB Crash")),
-        patch("shared_memory.server.logger.error") as mock_log_error,
+        patch("shared_memory.api.server.init_db", side_effect=Exception("DB Crash")),
+        patch("shared_memory.api.server.logger.error") as mock_log_error,
     ):
         await server._background_init()
 
         assert server._INITIALIZED_EVENT.is_set()
         assert server._INIT_ERROR is not None
         assert mock_log_error.called
-        assert "Background initialization FAILED" in mock_log_error.call_args[0][0]
+        assert any(
+            "[FATAL ERROR] Initialization failed" in call.args[0]
+            for call in mock_log_error.call_args_list
+        )

@@ -1,6 +1,6 @@
 import aiosqlite
 
-from shared_memory.utils import get_logger
+from shared_memory.common.utils import get_logger
 
 logger = get_logger("migration_v001")
 
