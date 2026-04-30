@@ -1,0 +1,42 @@
+name: CLA Check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  cla-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CLA Agreement in PR Body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prBody = context.payload.pull_request.body || '';
+            const claAgreed = prBody.includes('I have read and agree to the CLA for SharedMemoryServer');
+            
+            if (!claAgreed) {
+              const commentBody = `## ⚠️ CLA Agreement Required
+              
+              Thank you for your contribution! To merge this PR, you must agree to our Contributor License Agreement (CLA).
+              
+              **Action Required:**
+              Please edit your PR description and add the following line:
+              
+              > I have read and agree to the CLA for SharedMemoryServer.
+              
+              [Read the CLA here](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/CLA.md)
+              
+              *Note: This is required for SV-COS compliance.*`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: commentBody
+              });
+              
+              core.setFailed('CLA agreement missing in PR description.');
+            } else {
+              console.log('CLA agreement found.');
+            }
