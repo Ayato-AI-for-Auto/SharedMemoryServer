@@ -227,7 +227,8 @@ async def process_thought_core(
         total_dur = time.perf_counter() - start_total
         logger.info(
             f"PERF [process_thought_core]: session={session_id} "
-            f"total={total_dur:.3f}s (init={dur_init:.3f}s, db_insert={dur_db:.3f}s, salvage={dur_salvage:.3f}s)"
+            f"total={total_dur:.3f}s (init={dur_init:.3f}s, db_insert={dur_db:.3f}s, "
+            f"salvage={dur_salvage:.3f}s)"
         )
 
         return {

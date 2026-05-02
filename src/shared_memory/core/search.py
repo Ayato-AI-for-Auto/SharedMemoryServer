@@ -15,6 +15,7 @@ from shared_memory.infra.database import (
     async_get_connection,
     async_get_thoughts_connection,
     log_search_stat,
+    update_access,
 )
 from shared_memory.infra.embeddings import (
     compute_embedding,
@@ -65,6 +66,18 @@ async def perform_keyword_search(query: str, limit: int = 5, exclude_session_id:
                     key = (table, row_id)
                     current_score, _ = scored_results.get(key, (0.0, ""))
                     scored_results[key] = (current_score + score, str(content))
+
+        # 1.1 Search Tags
+        placeholders = ",".join(["?"] * len(query_words))
+        cursor = await conn.execute(
+            f"SELECT content_id, content_type, tag FROM tags WHERE tag IN ({placeholders})",
+            [f"#{w}" for w in query_words]
+        )
+        for cid, ctype, tag in await cursor.fetchall():
+            score = 15.0  # High score for explicit tag match
+            key = (ctype + "s" if not ctype.endswith("s") else ctype, cid)
+            current_score, content = scored_results.get(key, (0.0, f"Matched tag: {tag}"))
+            scored_results[key] = (current_score + score, content)
 
         # 2. Search Thoughts DB
         async with await async_get_thoughts_connection() as t_conn:
@@ -160,8 +173,9 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
                 importance = calculate_importance(count, last)
 
                 k_score = keyword_map.get(cid, 0.0)
-                # Weighted fusion (Semantic 50%, Keyword 30%, Importance 20%)
-                final_score = (sim * 0.5) + (importance * 0.2) + (k_score * 0.3)
+                # Weighted fusion (Semantic 40%, Keyword 30%, Importance 15%, Tag Match 15%)
+                # Tags are already partially in k_score but we could boost them here if needed.
+                final_score = (sim * 0.4) + (importance * 0.15) + (k_score * 0.45)
 
                 results.append((cid, final_score))
                 seen_cids.add(cid)
@@ -176,6 +190,10 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
             results.sort(key=lambda x: x[1], reverse=True)
             top_results = [r for r in results[:candidate_limit] if r[1] > 0.05]
             top_cids = [r[0] for r in top_results]
+
+            # Update access for top results
+            for cid in top_cids:
+                await update_access(cid, conn=conn)
 
             # Fetch detailed data in parallel
             graph_task = asyncio.create_task(get_graph_data_by_cids(top_cids, conn))

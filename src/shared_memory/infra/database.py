@@ -359,7 +359,18 @@ async def init_db(force: bool = False):
                 meta_data TEXT
             )
         """)
-        # Troubleshooting Knowledge table (Decoupled Feature)
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag TEXT NOT NULL,
+                content_id TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                UNIQUE(tag, content_id, content_type)
+            )
+        """)
+        await cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)")
+        await cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_content ON tags(content_id)")
+
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS troubleshooting_knowledge (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
