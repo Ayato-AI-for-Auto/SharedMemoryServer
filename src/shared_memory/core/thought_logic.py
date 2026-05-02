@@ -90,12 +90,13 @@ async def process_thought_core(
     revises_thought: int | None = None,
     branch_from_thought: int | None = None,
     branch_id: str | None = None,
-    session_id: str = "default_session",
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Implements the core logic for sequential thinking with security,
     validation, and persistence.
     """
+    session_id = session_id or "default_session"
     try:
         start_total = time.perf_counter()
 
@@ -246,9 +247,10 @@ async def process_thought_core(
 
 
 async def get_thought_history(
-    session_id: str = "default_session",
+    session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieves the thought history for a specific session."""
+    session_id = session_id or "default_session"
     try:
         async with await async_get_thoughts_connection() as conn:
             conn.row_factory = aiosqlite.Row
