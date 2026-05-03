@@ -120,6 +120,11 @@ class Settings:
         """構造化ログの有効化フラグ。"""
         return False
 
+    @property
+    def hashtag_ai_threshold(self) -> int:
+        """ハッシュタグ抽出においてAIを使用するかロジックを使用するかの文字数閾値。"""
+        return int(os.environ.get("HASHTAG_AI_THRESHOLD", 100))
+
 
 # Singleton instance
 settings = Settings()

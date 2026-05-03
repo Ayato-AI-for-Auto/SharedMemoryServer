@@ -1,5 +1,7 @@
 import asyncio
 import json
+import re
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -14,10 +16,56 @@ from shared_memory.infra.embeddings import (
 
 logger = get_logger("graph")
 
+# Common English stopwords to improve logic-based extraction
+STOP_WORDS = {
+    "a", "an", "the", "and", "or", "but", "if", "then", "else", "when", "at", "by", "for", "with",
+    "is", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her", "its", "our", "their",
+    "this", "that", "these", "those", "which", "who", "whom", "whose", "where", "how", "why",
+    "can", "could", "shall", "should", "will", "would", "may", "might", "must",
+    "in", "on", "to", "from", "up", "down", "out", "of", "about", "above", "below", "between",
+    "currently", "named", "using", "through", "during", "actually", "basically", "simply"
+}
+
 
 async def extract_hashtags(content: str) -> list[str]:
     """
-    Extracts up to 5 relevant hashtags (keywords) from the content using AI.
+    Extracts up to 5 relevant hashtags from the content.
+    Uses lightweight logic for short text and AI for longer text to optimize performance.
+    """
+    if not content or len(content) < 10:
+        return []
+
+    # Choose strategy based on length
+    if len(content) < settings.hashtag_ai_threshold:
+        return extract_hashtags_logic(content)
+    
+    return await extract_hashtags_ai(content)
+
+
+def extract_hashtags_logic(content: str, max_tags: int = 5) -> list[str]:
+    """
+    Lightweight keyword extraction using word frequency and stopword filtering.
+    """
+    # 1. Clean and tokenize (alphanumeric only)
+    words = re.findall(r"\w+", content.lower())
+
+    # 2. Filter: length > 3, not a stopword, not purely numeric
+    filtered = [
+        w for w in words
+        if len(w) > 3 and w not in STOP_WORDS and not w.isdigit()
+    ]
+
+    # 3. Frequency count
+    counts = Counter(filtered)
+
+    # 4. Return top N as normalized hashtags
+    return [f"#{word}" for word, _ in counts.most_common(max_tags)]
+
+
+async def extract_hashtags_ai(content: str) -> list[str]:
+    """
+    Extracts up to 5 thematic hashtags using AI.
     """
     if not content or len(content) < 10:
         return []
