@@ -408,6 +408,85 @@ async def init_db(force: bool = False):
         await _add_column_if_missing(cursor, "search_stats", "hit_content_ids TEXT")
         await _add_column_if_missing(cursor, "search_stats", "avg_similarity REAL DEFAULT 0.0")
 
+        # --- Full Text Search (FTS5) Support ---
+        await cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(
+                name, description, 
+                content='entities'
+            )
+        """)
+        await cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
+                entity_name, content, 
+                content='observations', content_rowid='id'
+            )
+        """)
+        await cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS bank_files_fts USING fts5(
+                filename, content, 
+                content='bank_files'
+            )
+        """)
+
+        # FTS Triggers: entities
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS entities_ai AFTER INSERT ON entities BEGIN
+                INSERT INTO entities_fts(rowid, name, description) VALUES (new.rowid, new.name, new.description);
+            END;
+        """)
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS entities_ad AFTER DELETE ON entities BEGIN
+                INSERT INTO entities_fts(entities_fts, rowid, name, description) VALUES('delete', old.rowid, old.name, old.description);
+            END;
+        """)
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS entities_au AFTER UPDATE ON entities BEGIN
+                INSERT INTO entities_fts(entities_fts, rowid, name, description) VALUES('delete', old.rowid, old.name, old.description);
+                INSERT INTO entities_fts(rowid, name, description) VALUES (new.rowid, new.name, new.description);
+            END;
+        """)
+
+        # FTS Triggers: observations
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS observations_ai AFTER INSERT ON observations BEGIN
+                INSERT INTO observations_fts(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
+            END;
+        """)
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS observations_ad AFTER DELETE ON observations BEGIN
+                INSERT INTO observations_fts(observations_fts, rowid, entity_name, content) VALUES('delete', old.id, old.entity_name, old.content);
+            END;
+        """)
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
+                INSERT INTO observations_fts(observations_fts, rowid, entity_name, content) VALUES('delete', old.id, old.entity_name, old.content);
+                INSERT INTO observations_fts(rowid, entity_name, content) VALUES (new.id, new.entity_name, new.content);
+            END;
+        """)
+
+        # FTS Triggers: bank_files
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS bank_files_ai AFTER INSERT ON bank_files BEGIN
+                INSERT INTO bank_files_fts(rowid, filename, content) VALUES (new.rowid, new.filename, new.content);
+            END;
+        """)
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS bank_files_ad AFTER DELETE ON bank_files BEGIN
+                INSERT INTO bank_files_fts(bank_files_fts, rowid, filename, content) VALUES('delete', old.rowid, old.filename, old.content);
+            END;
+        """)
+        await cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS bank_files_au AFTER UPDATE ON bank_files BEGIN
+                INSERT INTO bank_files_fts(bank_files_fts, rowid, filename, content) VALUES('delete', old.rowid, old.filename, old.content);
+                INSERT INTO bank_files_fts(rowid, filename, content) VALUES (new.rowid, new.filename, new.content);
+            END;
+        """)
+
+        # Population: Ensure existing data is indexed
+        await cursor.execute("INSERT INTO entities_fts(entities_fts) VALUES('rebuild')")
+        await cursor.execute("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')")
+        await cursor.execute("INSERT INTO bank_files_fts(bank_files_fts) VALUES('rebuild')")
+
         await conn.commit()
 
         # --- RUN MIGRATIONS ---

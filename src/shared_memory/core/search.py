@@ -37,35 +37,45 @@ async def perform_keyword_search(query: str, limit: int = 5, exclude_session_id:
 
         scored_results = {}
 
-        # 1. Search Knowledge DB (Entities, Observations, Bank)
-        data_sources = [
-            ("entities", "name", "description"),
-            ("observations", "entity_name", "content"),
-            ("bank_files", "filename", "content"),
+        # 1. Search Knowledge DB using FTS5 (Entities, Observations, Bank)
+        fts_sources = [
+            ("entities_fts", "entities", "name", "description"),
+            ("observations_fts", "observations", "entity_name", "content"),
+            ("bank_files_fts", "bank_files", "filename", "content"),
         ]
 
-        for table, id_col, content_col in data_sources:
-            cursor = await conn.execute(
-                f"SELECT {id_col}, {content_col} FROM {table} WHERE status = 'active'"
-            )
-            for row_id, content in await cursor.fetchall():
-                content_lower = str(content).lower()
-                row_id_lower = str(row_id).lower()
-                score = 0.0
+        for fts_table, source_name, id_col, content_col in fts_sources:
+            try:
+                # Use MATCH for fast full-text searching and BM25 for ranking
+                cursor = await conn.execute(
+                    f"SELECT {id_col}, {content_col}, bm25({fts_table}) "
+                    f"FROM {fts_table} WHERE {fts_table} MATCH ?",
+                    (query,)
+                )
+                for row_id, content, rank in await cursor.fetchall():
+                    # BM25 returns smaller values for better matches; 
+                    # we convert it to a positive score (higher is better)
+                    score = max(0.1, abs(rank) * 1.5)
+                    
+                    # Boost if the query is an exact match for the ID/Name
+                    if query.lower() == str(row_id).lower():
+                        score += 15.0
 
-                if query.lower() == row_id_lower:
-                    score += 10.0
-                elif query.lower() in row_id_lower:
-                    score += 5.0
-
-                for word in query_words:
-                    if word in content_lower:
-                        score += content_lower.count(word) * 1.5
-
-                if score > 0:
-                    key = (table, row_id)
+                    key = (source_name, row_id)
                     current_score, _ = scored_results.get(key, (0.0, ""))
                     scored_results[key] = (current_score + score, str(content))
+            except Exception as e:
+                logger.debug(f"FTS5 search failed for {fts_table}: {e}")
+                # Fallback to a simpler LIKE if FTS fails for some reason
+                cursor = await conn.execute(
+                    f"SELECT {id_col}, {content_col} FROM {source_name} "
+                    f"WHERE {content_col} LIKE ? OR {id_col} LIKE ? AND status = 'active'",
+                    (f"%{query}%", f"%{query}%")
+                )
+                for row_id, content in await cursor.fetchall():
+                    key = (source_name, row_id)
+                    current_score, _ = scored_results.get(key, (0.0, ""))
+                    scored_results[key] = (current_score + 2.0, str(content))
 
         # 1.1 Search Tags
         placeholders = ",".join(["?"] * len(query_words))
@@ -79,24 +89,32 @@ async def perform_keyword_search(query: str, limit: int = 5, exclude_session_id:
             current_score, content = scored_results.get(key, (0.0, f"Matched tag: {tag}"))
             scored_results[key] = (current_score + score, content)
 
-        # 2. Search Thoughts DB
-        async with await async_get_thoughts_connection() as t_conn:
-            t_cursor = await t_conn.execute(
-                "SELECT session_id, thought_number, thought "
-                "FROM thought_history WHERE session_id != ?",
-                (exclude_session_id or "",),
-            )
-            for sess_id, t_num, thought in await t_cursor.fetchall():
-                thought_lower = str(thought).lower()
-                score = 0.0
-                for word in query_words:
-                    if word in thought_lower:
-                        score += thought_lower.count(word) * 1.0
-
-                if score > 0:
+        # 2. Search Thoughts DB using FTS5
+        try:
+            async with await async_get_thoughts_connection() as t_conn:
+                t_cursor = await t_conn.execute(
+                    "SELECT session_id, thought_number, thought, bm25(thought_history_fts) "
+                    "FROM thought_history_fts WHERE thought_history_fts MATCH ? AND session_id != ?",
+                    (query, exclude_session_id or ""),
+                )
+                for sess_id, t_num, thought, rank in await t_cursor.fetchall():
+                    score = max(0.1, abs(rank) * 1.0)
                     key = ("thought_history", f"{sess_id}#{t_num}")
                     current_score, _ = scored_results.get(key, (0.0, ""))
                     scored_results[key] = (current_score + score, str(thought))
+        except Exception as e:
+            logger.debug(f"FTS5 thought search failed: {e}")
+            # Fallback for thoughts
+            async with await async_get_thoughts_connection() as t_conn:
+                t_cursor = await t_conn.execute(
+                    "SELECT session_id, thought_number, thought FROM thought_history "
+                    "WHERE thought LIKE ? AND session_id != ?",
+                    (f"%{query}%", exclude_session_id or ""),
+                )
+                for sess_id, t_num, thought in await t_cursor.fetchall():
+                    key = ("thought_history", f"{sess_id}#{t_num}")
+                    current_score, _ = scored_results.get(key, (0.0, ""))
+                    scored_results[key] = (current_score + 1.5, str(thought))
 
         sorted_items = sorted(scored_results.items(), key=lambda x: x[1][0], reverse=True)
 

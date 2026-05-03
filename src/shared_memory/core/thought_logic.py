@@ -75,9 +75,42 @@ async def init_thoughts_db(force: bool = False):
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_thought_timestamp ON thought_history (timestamp)"
         )
+        # --- Full Text Search (FTS5) Support for Thoughts ---
+        await conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS thought_history_fts USING fts5(
+                session_id, thought_number, thought, 
+                content='thought_history', content_rowid='id'
+            )
+        """)
+
+        # FTS Triggers for thought_history
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS thought_history_ai AFTER INSERT ON thought_history BEGIN
+                INSERT INTO thought_history_fts(rowid, session_id, thought_number, thought) 
+                VALUES (new.id, new.session_id, new.thought_number, new.thought);
+            END;
+        """)
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS thought_history_ad AFTER DELETE ON thought_history BEGIN
+                INSERT INTO thought_history_fts(thought_history_fts, rowid, session_id, thought_number, thought) 
+                VALUES('delete', old.id, old.session_id, old.thought_number, old.thought);
+            END;
+        """)
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS thought_history_au AFTER UPDATE ON thought_history BEGIN
+                INSERT INTO thought_history_fts(thought_history_fts, rowid, session_id, thought_number, thought) 
+                VALUES('delete', old.id, old.session_id, old.thought_number, old.thought);
+                INSERT INTO thought_history_fts(rowid, session_id, thought_number, thought) 
+                VALUES (new.id, new.session_id, new.thought_number, new.thought);
+            END;
+        """)
+
+        # Population: Ensure existing thoughts are indexed
+        await conn.execute("INSERT INTO thought_history_fts(thought_history_fts) VALUES('rebuild')")
+
         await conn.commit()
         _THOUGHTS_INITIALIZED = True
-        log_info("Thoughts database initialization successful.")
+        log_info("Thoughts database initialization successful (FTS5 enabled).")
 
 
 @retry_on_db_lock()
