@@ -31,7 +31,7 @@ try:
     from shared_memory.infra.database import init_db
     logger.info("Core submodules imported successfully")
 except Exception as e:
-    logger.error(f"Import failure: {e}", exc_info=True)
+    logger.exception("Import failure")
     sys.exit(1)
 
 # --- MCP PROTOCOL PATCH: PERMISSIVE HANDSHAKE ---
@@ -184,7 +184,7 @@ async def _permissive_session_receive_loop(self):
         except anyio.ClosedResourceError:
             pass
         except Exception as e:
-            logger.error(f"[MCP PATCH] Unhandled exception: {e}")
+            logger.exception("[MCP PATCH] Unhandled exception")
 
 mcp_session.BaseSession._receive_loop = _permissive_session_receive_loop
 
@@ -314,7 +314,7 @@ def _kill_port_process(port: int):
                 logger.warning(f"Killing zombie process {pid} on port {port}")
                 subprocess.run(['taskkill', '/F', '/PID', pid], check=True)
     except Exception as e:
-        logger.error(f"Failed to kill zombie process on port {port}: {e}")
+        logger.error("Failed to kill zombie process on port {port}: {error}", port=port, error=e)
 
 def main():
     import argparse

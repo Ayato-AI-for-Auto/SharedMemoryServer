@@ -15,7 +15,7 @@ from shared_memory.common.config import settings
 from shared_memory.common.utils import get_db_path, get_thoughts_db_path
 
 async def mock_perform_search_only(query: str, limit: int = 5):
-    """リランクなしの高速検索（上位N件をそのまま返す）"""
+    """リランクなしの高速検索(上位N件をそのまま返す)"""
     start = time.perf_counter()
     graph_data, bank_data = await perform_search(query, candidate_limit=limit)
     
