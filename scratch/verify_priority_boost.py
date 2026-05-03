@@ -32,7 +32,7 @@ async def setup_mock_data():
                 "INSERT OR REPLACE INTO entities (name, entity_type, description, status) VALUES (?, ?, ?, 'active')",
                 (name, type, desc)
             )
-            # 埋め込みも作成しておく（検索でヒットさせるため）
+            # 埋め込みも作成しておく(検索でヒットさせるため)
             vec = await compute_embedding(desc)
             if vec:
                 await conn.execute(

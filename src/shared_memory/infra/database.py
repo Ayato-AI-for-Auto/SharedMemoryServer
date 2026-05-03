@@ -115,10 +115,7 @@ class AsyncSQLiteConnection:
                             await _MAIN_CONNECTION.execute("PRAGMA cache_size = -2000")
                             logger.info("Main connection successfully established and configured.")
                         except Exception as e:
-                            logger.error(
-                                f"CRITICAL: Failed to establish main DB connection: {e}",
-                                exc_info=True,
-                            )
+                            logger.exception("CRITICAL: Failed to establish main DB connection")
                             raise
                     self.conn = _MAIN_CONNECTION
 
@@ -126,7 +123,7 @@ class AsyncSQLiteConnection:
         except Exception as e:
             from shared_memory.common.exceptions import DatabaseError
 
-            logger.error(f"Failed to connect to database at {self.db_path}: {e}", exc_info=True)
+            logger.exception("Failed to connect to database at {db_path}", db_path=self.db_path)
             log_error(f"Failed to connect to database at {self.db_path}", e)
             raise DatabaseError(f"Database connection failed: {e}") from e
 
@@ -293,7 +290,7 @@ async def init_db(force: bool = False):
             """)
             logger.info("Core tables (entities, relations, observations, bank_files) verified.")
         except Exception as e:
-            logger.error(f"CRITICAL: Failed to create/verify core tables: {e}", exc_info=True)
+            logger.exception("CRITICAL: Failed to create/verify core tables")
             raise
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS embeddings (

@@ -112,7 +112,7 @@ class Settings:
 
     @property
     def embedding_model(self) -> str:
-        """埋め込みベクトル生成に使用するモデル名を返す（固定）。"""
+        """埋め込みベクトル生成に使用するモデル名を返す(固定)。"""
         return GOOGLE_EMBEDDING_MODEL
 
     @property

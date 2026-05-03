@@ -206,7 +206,8 @@ async def perform_search(query: str, limit: int = 10, candidate_limit: int = 20)
                     results.append((cid, final_score))
 
             results.sort(key=lambda x: x[1], reverse=True)
-            top_results = [r for r in results[:candidate_limit] if r[1] > 0.05]
+            # Step 5: Respect the limit and filter by threshold
+            top_results = [r for r in results[:limit] if r[1] > 0.05]
             top_cids = [r[0] for r in top_results]
 
             # Update access for top results
