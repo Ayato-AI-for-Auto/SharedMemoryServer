@@ -137,10 +137,9 @@ async def save_memory_core(
     try:
         await init_db()
     except Exception as e:
-        msg = f"Critical Error: Could not initialize database. {e}"
-        logger.error(msg, exc_info=True)
-        log_error(msg)
-        return msg
+        logger.exception("Critical Error: Could not initialize database")
+        log_error("Critical Error: Could not initialize database", e)
+        return f"Critical Error: Could not initialize database. {e}"
 
     # --- Normalization (Handle string shorthands and synonyms) ---
     entities = normalize_entities(entities)
@@ -210,10 +209,9 @@ async def save_memory_core(
         all_vectors = results_gathering[0]
         all_extracted_tags = results_gathering[1]
     except Exception as e:
-        msg = f"AI Error: AI computation failed. {e}"
-        logger.error(f"Phase 1.1 FAILED: {msg}", exc_info=True)
-        log_error(msg)
-        return msg
+        logger.exception("Phase 1.1 FAILED (AI computation)")
+        log_error("AI computation failed", e)
+        return f"AI Error: AI computation failed. {e}"
 
     ai_duration = time.perf_counter() - ai_start_time
     logger.info(f"Phase 1.1 COMPLETE. Duration: {ai_duration:.2f}s")
@@ -331,19 +329,18 @@ async def save_memory_core(
                     await conn.commit()
                     logger.info("Database transaction COMMITTED.")
                 except aiosqlite.Error as e:
-                    logger.error(f"DB Transaction Error: {e}", exc_info=True)
+                    logger.exception("DB Transaction Error")
                     await conn.rollback()
                     log_error("Database transaction failed in save_memory_core", e)
                     return f"Database Error: Transaction failed. {e}"
                 except Exception as e:
-                    logger.error(f"Unexpected error during DB phase: {e}", exc_info=True)
+                    logger.exception("Unexpected error during DB phase")
                     await conn.rollback()
                     log_error("Unexpected error in save_memory_core", e)
                     return f"Internal Error: {e}"
     except Exception as e:
-        msg = f"Critical Error: Failed to acquire DB connection. {e}"
-        logger.error(msg, exc_info=True)
-        return msg
+        logger.exception("Critical Error: Failed to acquire DB connection")
+        return f"Critical Error: Failed to acquire DB connection. {e}"
 
     db_duration = time.perf_counter() - db_start_time
     total_duration = time.perf_counter() - start_time

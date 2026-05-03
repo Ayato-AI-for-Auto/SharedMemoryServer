@@ -47,3 +47,14 @@ def test_mask_sensitive_data():
     assert "[EMAIL_MASKED]" in masked
     assert "AIzaSy" not in masked
     assert "test@example.com" not in masked
+
+def test_log_error_with_braces():
+    """Verify that log_error doesn't crash when exception string contains braces."""
+    from shared_memory.common.utils import log_error
+    
+    # This string caused KeyError in loguru if handled improperly with f-strings
+    braces_error = ValueError("{'error': {'code': 500, 'message': 'Internal error'}}")
+    
+    # Should not raise KeyError
+    log_error("Testing braces error", braces_error)
+    log_error("Testing braces msg with {braces}")
